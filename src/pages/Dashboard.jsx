@@ -43,7 +43,8 @@ export default function Dashboard() {
     };
     fetchGames();
   }, []);
-  const [showGameSetup, setShowGameSetup] = useState(false);
+  const [showGameModal, setShowGameModal] = useState(false);
+  const [gameModalTab, setGameModalTab] = useState("create"); // "create" or "join"
   const newGameRef = useRef(null);
   // Game setup state
   const [gameType, setGameType] = useState("");
@@ -60,6 +61,56 @@ export default function Dashboard() {
       if (data?.user) setUserId(data.user.id);
     });
   }, []);
+  // --- Join Game by Code (for modal tab) ---
+  const [joinCode, setJoinCode] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [joinLoading, setJoinLoading] = useState(false);
+  const handleJoinGame = async (e) => {
+    e.preventDefault();
+    setJoinError("");
+    setJoinLoading(true);
+    const code = joinCode.trim().toUpperCase();
+    if (!code || code.length < 4) {
+      setJoinError("Enter a valid invite code.");
+      setJoinLoading(false);
+      return;
+    }
+    // Find session by code
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("sessions")
+      .select("id,join_code")
+      .eq("join_code", code)
+      .single();
+    if (sessionError || !sessionData) {
+      setJoinError("No game found with that code.");
+      setJoinLoading(false);
+      return;
+    }
+    // Get user
+    const user = await supabase.auth.getUser();
+    const currentUserId = user.data?.user?.id;
+    const name =
+      user.data?.user?.user_metadata?.full_name ||
+      user.data?.user?.email ||
+      "Player";
+    // Insert into session_players
+    const { error: insertError } = await supabase
+      .from("session_players")
+      .insert([
+        {
+          session_id: sessionData.id,
+          user_id: currentUserId,
+          name,
+        },
+      ]);
+    if (insertError && !insertError.message.includes("duplicate")) {
+      setJoinError("Could not join game. Try again.");
+      setJoinLoading(false);
+      return;
+    }
+    // Success: redirect
+    navigate(`/game/${sessionData.id}`);
+  };
   return (
     <div
       className="min-h-screen w-full flex flex-col items-center"
@@ -68,43 +119,65 @@ export default function Dashboard() {
           "linear-gradient(to bottom, #eaf3fb 0%, #eaf3fb 60%, #d1f7e7 100%)",
       }}
     >
-      <div className="w-full max-w-4xl flex flex-col gap-6 mt-12 px-2 sm:px-4 md:px-0 relative">
-        {/* Start New Game full width */}
-        <div className="w-full" ref={newGameRef}>
-          {/* Shared width for all three: Start New Game, Setup, Active Game */}
-          <div className="w-full">
+      <div className="w-full max-w-4xl flex flex-col gap-6 mt-12 px-3 sm:px-6 md:px-0 relative">
+        {/* Start/Join Game Button */}
+        <div className="w-full mb-2">
+          <button
+            className="w-full flex items-center justify-center gap-3 rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl py-6 px-3 text-green-700 font-bold text-xl hover:bg-green-50 transition-all focus:outline-none"
+            onClick={() => {
+              setShowGameModal(true);
+              setGameModalTab("create");
+            }}
+            aria-label="Start or join game"
+          >
+            {/* Golf Icon */}
+            <span className="text-3xl mr-2">⛳</span>
+            Start / Join Game
+          </button>
+        </div>
+        {/* Start/Join Game Modal */}
+        {showGameModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
+            tabIndex={-1}
+            aria-modal="true"
+            role="dialog"
+          >
             <div
-              className="rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl flex flex-col items-center justify-center cursor-pointer hover:shadow-2xl transition w-full py-8 px-3 text-center group relative"
-              onClick={() => setShowGameSetup((v) => !v)}
+              className="bg-white/95 border border-green-400/60 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 flex flex-col gap-4 animate-fade-in-down relative"
+              onClick={(e) => e.stopPropagation()}
             >
-              {/* Plus icon in upper right */}
-              <span className="absolute top-4 right-4 bg-green-500 group-hover:bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg transition-all">
-                <PlusIcon className="w-5 h-5" />
-              </span>
-              <span className="text-green-600 text-5xl mb-3 flex items-center justify-center">
-                ⛳
-              </span>
-              <h3 className="text-2xl font-extrabold mb-0">Start New Game</h3>
-            </div>
-            {/* Game Setup Modal */}
-            {showGameSetup && (
-              <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
-                tabIndex={-1}
-                aria-modal="true"
-                role="dialog"
+              <button
+                className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold focus:outline-none"
+                onClick={() => setShowGameModal(false)}
+                aria-label="Close"
               >
-                <div
-                  className="bg-white/95 border border-green-400/60 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 flex flex-col gap-4 animate-fade-in-down relative"
-                  onClick={(e) => e.stopPropagation()}
+                &times;
+              </button>
+              <div className="flex gap-2 mb-4">
+                <button
+                  className={`flex-1 py-2 rounded-lg font-bold text-lg transition ${
+                    gameModalTab === "create"
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-100 text-green-700"
+                  }`}
+                  onClick={() => setGameModalTab("create")}
                 >
-                  <button
-                    className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold focus:outline-none"
-                    onClick={() => setShowGameSetup(false)}
-                    aria-label="Close"
-                  >
-                    &times;
-                  </button>
+                  Start New Game
+                </button>
+                <button
+                  className={`flex-1 py-2 rounded-lg font-bold text-lg transition ${
+                    gameModalTab === "join"
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-100 text-green-700"
+                  }`}
+                  onClick={() => setGameModalTab("join")}
+                >
+                  Join Game
+                </button>
+              </div>
+              {gameModalTab === "create" ? (
+                <>
                   <h3 className="text-xl font-bold text-green-700 mb-2">
                     Set Up New Game
                   </h3>
@@ -126,7 +199,6 @@ export default function Dashboard() {
                       </option>
                       <option value="three-putt">Three Putt Poker</option>
                     </select>
-                    {/* Chevron Down Icon */}
                     <span className="pointer-events-none absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                       <svg
                         className="w-5 h-5"
@@ -143,8 +215,6 @@ export default function Dashboard() {
                       </svg>
                     </span>
                   </div>
-
-                  {/* Extra options for Three Putt Poker */}
                   {gameType === "three-putt" && (
                     <div className="flex flex-col gap-3 mt-2">
                       <label className="flex flex-col text-left text-sm font-medium text-gray-700">
@@ -265,14 +335,28 @@ export default function Dashboard() {
                     className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow font-semibold mt-2"
                     onClick={async () => {
                       setGameCreateError("");
-                      if (!gameName) return;
-                      setShowGameSetup(false);
-                      // Insert new game into Supabase
+                      let finalGameName = gameName.trim();
+                      if (!finalGameName) {
+                        const now = new Date();
+                        finalGameName = now.toLocaleString(undefined, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        });
+                      }
+                      setShowGameModal(false);
+                      // Generate a random 6-character invite code
+                      const joinCode = Math.random()
+                        .toString(36)
+                        .substring(2, 8)
+                        .toUpperCase();
                       const { data, error } = await supabase
                         .from("sessions")
                         .insert([
                           {
-                            name: gameName,
+                            name: finalGameName,
                             status: "active",
                             game_type: gameType,
                             buy_in_amount: startingAmount,
@@ -280,7 +364,8 @@ export default function Dashboard() {
                             three_putt_chip_enabled: chip,
                             three_putt_chip_value: chip ? chipValue : null,
                             deal_method: dealMethod,
-                            creator_id: userId, // Set creator_id to current user
+                            creator_id: userId,
+                            join_code: joinCode,
                           },
                         ])
                         .select()
@@ -293,6 +378,18 @@ export default function Dashboard() {
                         return;
                       }
                       if (data) {
+                        const user = await supabase.auth.getUser();
+                        const displayName =
+                          user.data?.user?.user_metadata?.full_name ||
+                          user.data?.user?.email ||
+                          "Host";
+                        await supabase.from("session_players").insert([
+                          {
+                            session_id: data.id,
+                            user_id: userId,
+                            name: displayName,
+                          },
+                        ]);
                         setActiveGames((prev) => [data, ...prev]);
                         setGameName("");
                         setGameType("");
@@ -309,89 +406,112 @@ export default function Dashboard() {
                   </button>
                   <button
                     className="text-gray-500 hover:text-gray-700 text-sm mt-1"
-                    onClick={() => setShowGameSetup(false)}
+                    onClick={() => setShowGameModal(false)}
                   >
                     Cancel
                   </button>
-                </div>
-              </div>
-            )}
-            {/* Active Game Bars (all active games, full width) */}
-            {gameCreateError && (
-              <div className="text-red-500 text-center py-2">
-                {gameCreateError}
-              </div>
-            )}
-            {loadingGames ? (
-              <div className="text-center text-gray-400 py-4">
-                Loading games...
-              </div>
-            ) : activeGames && activeGames.length > 0 ? (
-              activeGames.map((game, idx) => (
-                <div
-                  key={game.id}
-                  className={`flex items-center gap-3 bg-white/80 border border-green-400/60 rounded-xl px-4 py-3 shadow-lg ${
-                    idx === 0 ? "mt-4" : "mt-2"
-                  } mb-2 w-full backdrop-blur-md relative animate-fade-in`}
+                </>
+              ) : (
+                <form
+                  onSubmit={handleJoinGame}
+                  className="flex flex-col gap-3 items-center"
                 >
-                  <span className="relative flex h-4 w-4">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500"></span>
-                  </span>
-                  <span className="font-semibold text-green-700 hidden md:inline">
-                    Active Game:
-                  </span>
-                  <span className="font-bold text-gray-800 flex-1 truncate">
-                    {game.name}
-                    {game.game_type && (
-                      <span className="ml-2 text-xs font-semibold text-green-600 bg-green-100 rounded px-2 py-0.5 align-middle">
-                        {game.game_type === "three-putt"
-                          ? "Three Putt Poker"
-                          : game.game_type
-                              .replace(/-/g, " ")
-                              .replace(/\b\w/g, (l) => l.toUpperCase())}
-                      </span>
-                    )}
-                  </span>
+                  <h3 className="text-lg font-bold text-green-700 mb-1">
+                    Join Game
+                  </h3>
+                  <input
+                    type="text"
+                    placeholder="Enter Invite Code"
+                    className="rounded px-3 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 uppercase tracking-widest font-mono text-center text-lg"
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value)}
+                    maxLength={8}
+                    autoComplete="off"
+                  />
+                  {joinError && (
+                    <span className="text-red-500 text-sm">{joinError}</span>
+                  )}
                   <button
-                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded shadow transition"
-                    onClick={() => navigate(`/game/${game.id}`)}
+                    type="submit"
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow font-semibold w-full"
+                    disabled={joinLoading}
                   >
-                    Resume
+                    {joinLoading ? "Joining..." : "Join Game"}
                   </button>
-                </div>
-              ))
-            ) : (
-              <div className="text-center text-gray-400 py-4">
-                No active games yet.
-              </div>
-            )}
+                </form>
+              )}
+            </div>
           </div>
+        )}
+        {/* Active Game Bars (all active games, full width) */}
+        <div className="w-full mb-0" ref={newGameRef}>
+          {gameCreateError && (
+            <div className="text-red-500 text-center py-2">
+              {gameCreateError}
+            </div>
+          )}
+          {loadingGames ? (
+            <div className="text-center text-gray-400 py-4">
+              Loading games...
+            </div>
+          ) : activeGames && activeGames.length > 0 ? (
+            activeGames.map((game) => (
+              <div
+                key={game.id}
+                className="flex items-center gap-3 bg-white/80 border border-green-400/60 rounded-xl px-4 py-3 shadow-lg my-2 w-full backdrop-blur-md relative animate-fade-in"
+              >
+                <span className="relative flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500"></span>
+                </span>
+                <span className="font-semibold text-green-700 hidden md:inline">
+                  Active Game:
+                </span>
+                <span className="font-bold text-gray-800 flex-1 truncate">
+                  {game.name}
+                  {game.game_type && (
+                    <span className="ml-2 text-xs font-semibold text-green-600 bg-green-100 rounded px-2 py-0.5 align-middle">
+                      {game.game_type === "three-putt"
+                        ? "Three Putt Poker"
+                        : game.game_type
+                            .replace(/-/g, " ")
+                            .replace(/\b\w/g, (l) => l.toUpperCase())}
+                    </span>
+                  )}
+                </span>
+                <button
+                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded shadow transition"
+                  onClick={() => navigate(`/game/${game.id}`)}
+                >
+                  Resume
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="text-center text-gray-400 py-4">
+              No active games yet.
+            </div>
+          )}
         </div>
 
-        {/* (Removed duplicate old single activeGame bar) */}
+        {/* Game History & Rules side by side on all screens */}
 
-        {/* Floating + button for mobile (opens Start New Game setup) */}
-        {!showGameSetup && (
+        {/* Floating + button for mobile (opens Start/Join Game modal) */}
+        {!showGameModal && (
           <button
             className="md:hidden fixed bottom-6 right-6 z-50 bg-green-500 hover:bg-green-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-2xl border-4 border-white/70 transition-all"
             onClick={() => {
-              if (newGameRef.current) {
-                newGameRef.current.scrollIntoView({
-                  behavior: "smooth",
-                  block: "center",
-                });
-              }
-              setShowGameSetup(true);
+              setShowGameModal(true);
+              setGameModalTab("create");
             }}
-            aria-label="Start new game"
+            aria-label="Start or join game"
           >
             <PlusIcon />
           </button>
         )}
 
         {/* Game History & Rules side by side on all screens */}
-        <div className="flex flex-row gap-6 w-full">
+        <div className="flex flex-row gap-8 w-full mt-0">
           <div className="flex-1 min-w-0 rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl flex flex-col items-center justify-center py-6 px-3">
             <span className="text-blue-500 text-4xl mb-2">📜</span>
             <h3 className="text-xl font-bold mb-1">Game History</h3>

@@ -1,12 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import birdie from "../assets/birdie.png";
 import { supabase } from "../lib/supabaseClient";
 
 export default function AuthPage() {
   const [mode, setMode] = useState("signin");
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoveryInfo, setRecoveryInfo] = useState("");
+  // Always show recovery form if type=recovery is in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("type") === "recovery") {
+      setShowRecovery(true);
+      setMode("recovery");
+    } else {
+      setShowRecovery(false);
+    }
+  }, []);
   const [resetEmail, setResetEmail] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [info, setInfo] = useState("");
@@ -18,7 +33,54 @@ export default function AuthPage() {
     setLoading(true);
     try {
       let result;
-      if (mode === "reset") {
+      if (mode === "recovery") {
+        // Handle set new password
+        setRecoveryError("");
+        setRecoveryInfo("");
+        if (!newPassword || newPassword.length < 6) {
+          setRecoveryError("Password must be at least 6 characters.");
+          setLoading(false);
+          return;
+        }
+        // Get tokens from URL if present
+        const params = new URLSearchParams(window.location.search);
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+        const expires_in = params.get("expires_in");
+        const token_type = params.get("token_type");
+        if (access_token && refresh_token) {
+          // Set session before updating password (pass all possible fields)
+          const sessionObj = {
+            access_token,
+            refresh_token,
+          };
+          if (expires_in) sessionObj.expires_in = Number(expires_in);
+          if (token_type) sessionObj.token_type = token_type;
+          const { error: sessionError } = await supabase.auth.setSession(
+            sessionObj
+          );
+          if (sessionError) {
+            setRecoveryError("Session error: " + sessionError.message);
+            setLoading(false);
+            return;
+          }
+        }
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+        if (error) {
+          setRecoveryError(error.message);
+        } else {
+          setRecoveryInfo(
+            "Password updated! You can now sign in with your new password."
+          );
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 1500);
+        }
+        setLoading(false);
+        return;
+      } else if (mode === "reset") {
         // Password reset flow
         setError("");
         setInfo("");
@@ -45,8 +107,17 @@ export default function AuthPage() {
           window.location.href = "/";
         }
       } else {
-        // Sign up with email
-        result = await supabase.auth.signUp({ email, password });
+        // Sign up with email and display name
+        if (!displayName) {
+          setError("Please enter a display name.");
+          setLoading(false);
+          return;
+        }
+        result = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: displayName } },
+        });
         if (result.error) {
           const msg = result.error.message.toLowerCase();
           if (
@@ -76,6 +147,7 @@ export default function AuthPage() {
           );
           setEmail("");
           setPassword("");
+          setDisplayName("");
         }
       }
     } catch {
@@ -138,10 +210,45 @@ export default function AuthPage() {
           </svg>
         </div>
         <h2 className="text-2xl font-bold mb-6 text-center text-indigo-700">
-          {mode === "signin" ? "Sign In" : "Sign Up"}
+          {showRecovery
+            ? "Set New Password"
+            : mode === "signin"
+            ? "Sign In"
+            : "Sign Up"}
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === "reset" ? (
+          {showRecovery ? (
+            <>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Enter your new password
+              </label>
+              <input
+                type="password"
+                className="w-full px-3 py-2 border-2 border-gray-200 bg-gray-50 rounded-lg shadow-sm focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={6}
+                autoComplete="new-password"
+                placeholder="New password"
+              />
+              {recoveryError && (
+                <div className="text-red-600 text-sm">{recoveryError}</div>
+              )}
+              {recoveryInfo && (
+                <div className="text-green-700 text-sm font-semibold">
+                  {recoveryInfo}
+                </div>
+              )}
+              <button
+                type="submit"
+                className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded hover:bg-indigo-700 transition"
+                disabled={loading}
+              >
+                {loading ? "Updating..." : "Set New Password"}
+              </button>
+            </>
+          ) : mode === "reset" ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Enter your email to reset password
@@ -157,6 +264,22 @@ export default function AuthPage() {
             </div>
           ) : (
             <>
+              {mode === "signup" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Display Name
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border-2 border-gray-200 bg-gray-50 rounded-lg shadow-sm focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    required
+                    autoComplete="nickname"
+                    placeholder="e.g. Tiger Woods"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
@@ -210,59 +333,63 @@ export default function AuthPage() {
           {info && (
             <div className="text-green-700 text-sm font-semibold">{info}</div>
           )}
-          <button
-            type="submit"
-            className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded hover:bg-indigo-700 transition"
-            disabled={loading}
-          >
-            {mode === "reset"
-              ? loading
-                ? "Sending..."
-                : "Send Reset Email"
-              : loading
-              ? mode === "signin"
-                ? "Signing In..."
-                : "Signing Up..."
-              : mode === "signin"
-              ? "Sign In"
-              : "Sign Up"}
-          </button>
+          {mode !== "recovery" && (
+            <button
+              type="submit"
+              className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded hover:bg-indigo-700 transition"
+              disabled={loading}
+            >
+              {mode === "reset"
+                ? loading
+                  ? "Sending..."
+                  : "Send Reset Email"
+                : loading
+                ? mode === "signin"
+                  ? "Signing In..."
+                  : "Signing Up..."
+                : mode === "signin"
+                ? "Sign In"
+                : "Sign Up"}
+            </button>
+          )}
         </form>
-        <div className="mt-4 text-center text-sm text-gray-600">
-          {mode === "signin" && (
-            <>
-              Don't have an account?{" "}
-              <button
-                className="text-indigo-600 hover:underline"
-                onClick={() => setMode("signup")}
-              >
-                Sign Up
-              </button>
-            </>
-          )}
-          {mode === "signup" && (
-            <>
-              Already have an account?{" "}
-              <button
-                className="text-indigo-600 hover:underline"
-                onClick={() => setMode("signin")}
-              >
-                Sign In
-              </button>
-            </>
-          )}
-          {mode === "reset" && (
-            <>
-              Remembered your password?{" "}
-              <button
-                className="text-indigo-600 hover:underline"
-                onClick={() => setMode("signin")}
-              >
-                Back to Sign In
-              </button>
-            </>
-          )}
-        </div>
+        {!showRecovery && (
+          <div className="mt-4 text-center text-sm text-gray-600">
+            {mode === "signin" && (
+              <>
+                Don't have an account?{" "}
+                <button
+                  className="text-indigo-600 hover:underline"
+                  onClick={() => setMode("signup")}
+                >
+                  Sign Up
+                </button>
+              </>
+            )}
+            {mode === "signup" && (
+              <>
+                Already have an account?{" "}
+                <button
+                  className="text-indigo-600 hover:underline"
+                  onClick={() => setMode("signin")}
+                >
+                  Sign In
+                </button>
+              </>
+            )}
+            {mode === "reset" && (
+              <>
+                Remembered your password?{" "}
+                <button
+                  className="text-indigo-600 hover:underline"
+                  onClick={() => setMode("signin")}
+                >
+                  Back to Sign In
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
       {/* Footer */}
       <footer className="mt-8 text-center text-xs text-gray-500">

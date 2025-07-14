@@ -3,14 +3,19 @@ import { useAuth } from "./context/useAuth";
 
 import AuthPage from "./pages/AuthPage.jsx";
 import Dashboard from "./pages/Dashboard";
-import HoleTracker from "./pages/HoleTracker";
+import Game from "./pages/Game";
 import NotFound from "./pages/NotFound";
 import NewGame from "./pages/NewGame";
 import Navbar from "./components/Navbar";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
+  // If the URL contains type=recovery, do NOT redirect, always show children (AuthPage)
+  const params = new URLSearchParams(window.location.search);
   if (loading) return <div className="p-8 text-center">Loading...</div>;
+  if (params.get("type") === "recovery") {
+    return children;
+  }
   return user ? children : <Navigate to="/login" />;
 }
 
@@ -40,7 +45,7 @@ function Layout() {
             path="/game/:id"
             element={
               <PrivateRoute>
-                <HoleTracker />
+                <Game />
               </PrivateRoute>
             }
           />
