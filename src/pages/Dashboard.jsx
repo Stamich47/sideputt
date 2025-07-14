@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabaseClient";
 
 // Heroicons Plus SVG
 const PlusIcon = ({ className = "w-8 h-8" }) => (
@@ -21,20 +22,44 @@ const PlusIcon = ({ className = "w-8 h-8" }) => (
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  // Simulated state for multiple active games
-  const [activeGames, setActiveGames] = useState([
-    { id: 1, name: "Sunday Skins", status: "active" },
-    { id: 2, name: "Friday Night Lights", status: "active" },
-  ]);
+  // Active games state loaded from Supabase
+  const [activeGames, setActiveGames] = useState([]);
+  const [loadingGames, setLoadingGames] = useState(true);
+  const [gameName, setGameName] = useState("");
+  // Load active games from Supabase on mount
+  React.useEffect(() => {
+    const fetchGames = async () => {
+      setLoadingGames(true);
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("id, name, status, game_type")
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error("Error fetching games:", error);
+      }
+      if (!error) setActiveGames(data || []);
+      setLoadingGames(false);
+    };
+    fetchGames();
+  }, []);
   const [showGameSetup, setShowGameSetup] = useState(false);
   const newGameRef = useRef(null);
   // Game setup state
   const [gameType, setGameType] = useState("");
-  const [startingAmount, setStartingAmount] = useState(20);
+  const [startingAmount, setStartingAmount] = useState(5);
   const [threePuttValue, setThreePuttValue] = useState(1);
   const [chip, setChip] = useState(true);
   const [dealMethod, setDealMethod] = useState("private");
-  const [chipValue, setChipValue] = useState(1);
+  const [chipValue, setChipValue] = useState(5);
+  const [gameCreateError, setGameCreateError] = useState("");
+  // Get current user for creator_id
+  const [userId, setUserId] = useState(null);
+  React.useEffect(() => {
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (data?.user) setUserId(data.user.id);
+    });
+  }, []);
   return (
     <div
       className="min-h-screen w-full flex flex-col items-center"
@@ -65,7 +90,6 @@ export default function Dashboard() {
             {showGameSetup && (
               <div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
-                onClick={() => setShowGameSetup(false)}
                 tabIndex={-1}
                 aria-modal="true"
                 role="dialog"
@@ -88,6 +112,8 @@ export default function Dashboard() {
                     type="text"
                     placeholder="Game Name"
                     className="rounded px-3 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400"
+                    value={gameName}
+                    onChange={(e) => setGameName(e.target.value)}
                   />
                   <div className="relative mt-1">
                     <select
@@ -237,18 +263,46 @@ export default function Dashboard() {
                   )}
                   <button
                     className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow font-semibold mt-2"
-                    onClick={() => {
+                    onClick={async () => {
+                      setGameCreateError("");
+                      if (!gameName) return;
                       setShowGameSetup(false);
-                      // Simulate creating a new game and navigating
-                      setActiveGames((prev) => [
-                        ...prev,
-                        {
-                          id: prev.length + 1,
-                          name: "New Game",
-                          status: "active",
-                        },
-                      ]);
-                      navigate(`/game/${activeGames.length + 1}`);
+                      // Insert new game into Supabase
+                      const { data, error } = await supabase
+                        .from("sessions")
+                        .insert([
+                          {
+                            name: gameName,
+                            status: "active",
+                            game_type: gameType,
+                            buy_in_amount: startingAmount,
+                            three_putt_value: threePuttValue,
+                            three_putt_chip_enabled: chip,
+                            three_putt_chip_value: chip ? chipValue : null,
+                            deal_method: dealMethod,
+                            creator_id: userId, // Set creator_id to current user
+                          },
+                        ])
+                        .select()
+                        .single();
+                      if (error) {
+                        setGameCreateError(
+                          "Failed to create game: " + error.message
+                        );
+                        console.error("Supabase insert error:", error);
+                        return;
+                      }
+                      if (data) {
+                        setActiveGames((prev) => [data, ...prev]);
+                        setGameName("");
+                        setGameType("");
+                        setStartingAmount(5);
+                        setThreePuttValue(1);
+                        setChip(true);
+                        setChipValue(5);
+                        setDealMethod("private");
+                        navigate(`/game/${data.id}`);
+                      }
                     }}
                   >
                     Start Game
@@ -263,8 +317,16 @@ export default function Dashboard() {
               </div>
             )}
             {/* Active Game Bars (all active games, full width) */}
-            {activeGames &&
-              activeGames.length > 0 &&
+            {gameCreateError && (
+              <div className="text-red-500 text-center py-2">
+                {gameCreateError}
+              </div>
+            )}
+            {loadingGames ? (
+              <div className="text-center text-gray-400 py-4">
+                Loading games...
+              </div>
+            ) : activeGames && activeGames.length > 0 ? (
               activeGames.map((game, idx) => (
                 <div
                   key={game.id}
@@ -276,11 +338,20 @@ export default function Dashboard() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500"></span>
                   </span>
-                  <span className="font-semibold text-green-700">
+                  <span className="font-semibold text-green-700 hidden md:inline">
                     Active Game:
                   </span>
                   <span className="font-bold text-gray-800 flex-1 truncate">
                     {game.name}
+                    {game.game_type && (
+                      <span className="ml-2 text-xs font-semibold text-green-600 bg-green-100 rounded px-2 py-0.5 align-middle">
+                        {game.game_type === "three-putt"
+                          ? "Three Putt Poker"
+                          : game.game_type
+                              .replace(/-/g, " ")
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                      </span>
+                    )}
                   </span>
                   <button
                     className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded shadow transition"
@@ -289,7 +360,12 @@ export default function Dashboard() {
                     Resume
                   </button>
                 </div>
-              ))}
+              ))
+            ) : (
+              <div className="text-center text-gray-400 py-4">
+                No active games yet.
+              </div>
+            )}
           </div>
         </div>
 
@@ -319,16 +395,12 @@ export default function Dashboard() {
           <div className="flex-1 min-w-0 rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl flex flex-col items-center justify-center py-6 px-3">
             <span className="text-blue-500 text-4xl mb-2">📜</span>
             <h3 className="text-xl font-bold mb-1">Game History</h3>
-            <p className="text-gray-600 text-center">
-              View your past games and results.
-            </p>
+            {/* Subtext removed */}
           </div>
           <div className="flex-1 min-w-0 rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl flex flex-col items-center justify-center py-6 px-3">
             <span className="text-indigo-500 text-4xl mb-2">📖</span>
             <h3 className="text-xl font-bold mb-1">Rules</h3>
-            <p className="text-gray-600 text-center">
-              Review the rules for Three Putt Poker.
-            </p>
+            {/* Subtext removed */}
           </div>
         </div>
       </div>
