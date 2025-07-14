@@ -33,7 +33,13 @@ export default function NewGame() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-200">
+    <div
+      className="min-h-screen flex flex-col items-center justify-center"
+      style={{
+        background:
+          "linear-gradient(to bottom, #eaf3fb 0%, #eaf3fb 60%, #d1f7e7 100%)",
+      }}
+    >
       {/* Logo/Header outside the box */}
       <div className="flex flex-col items-center mb-10 mt-8">
         <div className="flex items-end gap-2">

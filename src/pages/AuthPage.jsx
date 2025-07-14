@@ -1,11 +1,9 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import birdie from "../assets/birdie.png";
 import { supabase } from "../lib/supabaseClient";
 
 export default function AuthPage() {
   const [mode, setMode] = useState("signin");
-  const navigate = useNavigate();
   const [resetEmail, setResetEmail] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
