@@ -1,0 +1,269 @@
+import React, { useState } from "react";
+import birdie from "../assets/birdie.png";
+import { supabase } from "../lib/supabaseClient";
+
+export default function AuthPage({ onAuth }) {
+  const [mode, setMode] = useState("signin");
+  const [resetEmail, setResetEmail] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [info, setInfo] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setInfo("");
+    setLoading(true);
+    try {
+      let result;
+      if (mode === "reset") {
+        // Password reset flow
+        setError("");
+        setInfo("");
+        if (!resetEmail) {
+          setError("Please enter your email address.");
+          setLoading(false);
+          return;
+        }
+        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail);
+        if (error) {
+          setError(error.message);
+        } else {
+          setInfo("Password reset email sent! Please check your inbox.");
+        }
+        setLoading(false);
+        return;
+      } else if (mode === "signin") {
+        // Sign in with email
+        result = await supabase.auth.signInWithPassword({ email, password });
+        if (result.error) {
+          setError(result.error.message);
+        } else {
+          if (onAuth) onAuth({ email });
+        }
+      } else {
+        // Sign up with email
+        result = await supabase.auth.signUp({ email, password });
+        if (result.error) {
+          const msg = result.error.message.toLowerCase();
+          if (
+            msg.includes("user already registered") ||
+            msg.includes("already registered")
+          ) {
+            setError(
+              "This email is already registered. Please sign in or use password reset."
+            );
+          } else if (msg.includes("rate limit")) {
+            setError("Too many sign up attempts. Please wait and try again.");
+          } else {
+            setError(result.error.message);
+          }
+        } else if (
+          result.data?.user &&
+          Array.isArray(result.data.user.identities) &&
+          result.data.user.identities.length === 0
+        ) {
+          // Supabase returns a user object with empty identities array if the user already exists and is confirmed
+          setError(
+            "This email is already registered. Please sign in or use password reset."
+          );
+        } else {
+          setInfo(
+            "Sign up successful! Please check your email for a verification link before signing in."
+          );
+          setEmail("");
+          setPassword("");
+        }
+      }
+    } catch {
+      setError("Unexpected error. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-200">
+      {/* Logo/Header outside the box */}
+      <div className="flex flex-col items-center mb-10 mt-8">
+        <div className="flex items-end gap-2">
+          {/* PNG golf ball icon, left of text and aligned to bottom */}
+          <img
+            src={birdie}
+            alt="Golf ball"
+            className="w-8 h-8 object-contain drop-shadow"
+            style={{ marginBottom: "3px" }}
+          />
+          <span className="text-5xl font-extrabold tracking-tight text-gray-900 select-none font-sans drop-shadow-sm">
+            Side<span className="text-green-600">Putt</span>
+          </span>
+        </div>
+      </div>
+      <div
+        className="relative border-4 border-green-600 rounded-[2.5rem] shadow-[0_8px_32px_0_rgba(34,197,94,0.15)] p-6 sm:p-10 md:p-12 w-full max-w-xs sm:max-w-md md:max-w-lg mx-auto overflow-hidden"
+        style={{
+          background: "linear-gradient(to bottom, #e0f2fe 0%, #b9e6fe 100%)",
+          minHeight: "440px",
+        }}
+      >
+        {/* Decorative golf grass at the bottom using SVG */}
+        <div className="absolute left-0 right-0 bottom-0 h-10 flex items-end pointer-events-none select-none">
+          <svg
+            viewBox="0 0 400 40"
+            width="100%"
+            height="40"
+            preserveAspectRatio="none"
+            className="w-full h-full"
+          >
+            <rect x="0" y="20" width="400" height="20" fill="#22c55e" />
+            <path
+              d="M0,30 Q20,10 40,30 T80,30 T120,30 T160,30 T200,30 T240,30 T280,30 T320,30 T360,30 T400,30 V40 H0Z"
+              fill="#16a34a"
+            />
+            <path
+              d="M10,35 Q20,25 30,35 Q40,25 50,35 Q60,25 70,35 Q80,25 90,35 Q100,25 110,35 Q120,25 130,35 Q140,25 150,35 Q160,25 170,35 Q180,25 190,35 Q200,25 210,35 Q220,25 230,35 Q240,25 250,35 Q260,25 270,35 Q280,25 290,35 Q300,25 310,35 Q320,25 330,35 Q340,25 350,35 Q360,25 370,35 Q380,25 390,35"
+              stroke="#166534"
+              strokeWidth="2"
+              fill="none"
+            />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold mb-6 text-center text-indigo-700">
+          {mode === "signin" ? "Sign In" : "Sign Up"}
+        </h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === "reset" ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Enter your email to reset password
+              </label>
+              <input
+                type="email"
+                className="w-full px-3 py-2 border-2 border-gray-200 bg-gray-50 rounded-lg shadow-sm focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  className="w-full px-3 py-2 border-2 border-gray-200 bg-gray-50 rounded-lg shadow-sm focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  className="w-full px-3 py-2 border-2 border-gray-200 bg-gray-50 rounded-lg shadow-sm focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete={
+                    mode === "signin" ? "current-password" : "new-password"
+                  }
+                />
+              </div>
+              {mode === "signin" && (
+                <div className="text-right">
+                  <button
+                    type="button"
+                    className="text-indigo-600 hover:underline text-xs"
+                    onClick={() => {
+                      setMode("reset");
+                      setError("");
+                      setInfo("");
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+          {error && <div className="text-red-600 text-sm">{error}</div>}
+          {info && (
+            <div className="text-green-700 text-sm font-semibold">{info}</div>
+          )}
+          <button
+            type="submit"
+            className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded hover:bg-indigo-700 transition"
+            disabled={loading}
+          >
+            {mode === "reset"
+              ? loading
+                ? "Sending..."
+                : "Send Reset Email"
+              : loading
+              ? mode === "signin"
+                ? "Signing In..."
+                : "Signing Up..."
+              : mode === "signin"
+              ? "Sign In"
+              : "Sign Up"}
+          </button>
+        </form>
+        <div className="mt-4 text-center text-sm text-gray-600">
+          {mode === "signin" && (
+            <>
+              Don't have an account?{" "}
+              <button
+                className="text-indigo-600 hover:underline"
+                onClick={() => setMode("signup")}
+              >
+                Sign Up
+              </button>
+            </>
+          )}
+          {mode === "signup" && (
+            <>
+              Already have an account?{" "}
+              <button
+                className="text-indigo-600 hover:underline"
+                onClick={() => setMode("signin")}
+              >
+                Sign In
+              </button>
+            </>
+          )}
+          {mode === "reset" && (
+            <>
+              Remembered your password?{" "}
+              <button
+                className="text-indigo-600 hover:underline"
+                onClick={() => setMode("signin")}
+              >
+                Back to Sign In
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {/* Footer */}
+      <footer className="mt-8 text-center text-xs text-gray-500">
+        Designed by{" "}
+        <a
+          href="https://mjswebdesign.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-green-700 hover:underline font-semibold"
+        >
+          MJS Web Design
+        </a>
+      </footer>
+    </div>
+  );
+}
