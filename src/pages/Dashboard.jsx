@@ -56,7 +56,7 @@ export default function Dashboard() {
   // Get current user for creator_id
   const [userId, setUserId] = useState(null);
   React.useEffect(() => {
-    supabase.auth.getUser().then(({ data, error }) => {
+    supabase.auth.getUser().then(({ data }) => {
       if (data?.user) setUserId(data.user.id);
     });
   }, []);
