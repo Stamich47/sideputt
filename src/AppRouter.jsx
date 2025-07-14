@@ -18,7 +18,7 @@ function Layout() {
   return (
     <>
       <Navbar />
-      <main className="min-h-[calc(100vh-56px)] bg-gray-100 p-4">
+      <main className="min-h-[calc(100vh-56px)]">
         <Routes>
           <Route
             path="/"

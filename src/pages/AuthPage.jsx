@@ -1,9 +1,11 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import birdie from "../assets/birdie.png";
 import { supabase } from "../lib/supabaseClient";
 
-export default function AuthPage({ onAuth }) {
+export default function AuthPage() {
   const [mode, setMode] = useState("signin");
+  const navigate = useNavigate();
   const [resetEmail, setResetEmail] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -41,7 +43,8 @@ export default function AuthPage({ onAuth }) {
         if (result.error) {
           setError(result.error.message);
         } else {
-          if (onAuth) onAuth({ email });
+          // Redirect to dashboard after successful sign-in (full reload for password manager support)
+          window.location.href = "/";
         }
       } else {
         // Sign up with email
@@ -84,7 +87,13 @@ export default function AuthPage({ onAuth }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-200">
+    <div
+      className="min-h-screen flex flex-col items-center justify-center"
+      style={{
+        background:
+          "linear-gradient(to bottom, #eaf3fb 0%, #eaf3fb 60%, #d1f7e7 100%)",
+      }}
+    >
       {/* Logo/Header outside the box */}
       <div className="flex flex-col items-center mb-10 mt-8">
         <div className="flex items-end gap-2">
@@ -101,9 +110,10 @@ export default function AuthPage({ onAuth }) {
         </div>
       </div>
       <div
-        className="relative border-4 border-green-600 rounded-[2.5rem] shadow-[0_8px_32px_0_rgba(34,197,94,0.15)] p-6 sm:p-10 md:p-12 w-full max-w-xs sm:max-w-md md:max-w-lg mx-auto overflow-hidden"
+        className="relative rounded-[2.5rem] w-full max-w-xs sm:max-w-md md:max-w-lg mx-auto overflow-hidden border border-white/60 bg-white/80 backdrop-blur-lg shadow-2xl p-6 sm:p-10 md:p-12"
         style={{
-          background: "linear-gradient(to bottom, #e0f2fe 0%, #b9e6fe 100%)",
+          background:
+            "linear-gradient(135deg, rgba(185,230,254,0.85) 0%, rgba(185,230,254,0.65) 60%, rgba(255,255,255,0.45) 100%)",
           minHeight: "440px",
         }}
       >
@@ -159,7 +169,7 @@ export default function AuthPage({ onAuth }) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                 />
               </div>
               <div>
@@ -173,7 +183,11 @@ export default function AuthPage({ onAuth }) {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete={
-                    mode === "signin" ? "current-password" : "new-password"
+                    mode === "signin"
+                      ? "current-password"
+                      : mode === "signup"
+                      ? "new-password"
+                      : undefined
                   }
                 />
               </div>
