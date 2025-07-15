@@ -48,7 +48,7 @@ function CollapsibleStatsCard() {
                 Best Score: <span className="font-semibold">—</span>
               </span>
               <span>
-                Birdies: <span className="font-semibold">—</span>
+                Rounds Won: <span className="font-semibold">—</span>
               </span>
               <span>
                 Three Putts: <span className="font-semibold">—</span>
@@ -149,10 +149,20 @@ export default function Dashboard() {
   React.useEffect(() => {
     const fetchGames = async () => {
       setLoadingGames(true);
+      // Get current user
+      const user = await supabase.auth.getUser();
+      const currentUserId = user.data?.user?.id;
+      if (!currentUserId) {
+        setActiveGames([]);
+        setLoadingGames(false);
+        return;
+      }
+      // Only fetch sessions where user is a member (in session_players)
       const { data, error } = await supabase
         .from("sessions")
-        .select("id, name, status, game_type")
+        .select("id, name, status, game_type, session_players!inner(user_id)")
         .eq("status", "active")
+        .eq("session_players.user_id", currentUserId)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("Error fetching games:", error);
@@ -651,23 +661,29 @@ export default function Dashboard() {
       </div>
       {/* Funny/Cheeky Golf Tip of the Day */}
       <div className="w-full flex items-center justify-center mt-0 mb-4">
-        <div className="rounded-xl border border-green-100 bg-green-50/80 shadow flex flex-col items-center py-4 px-4 max-w-md w-full">
-          <span className="text-green-600 text-2xl mb-1">💡</span>
-          <h4 className="font-bold text-green-800 mb-1">Golf Tip of the Day</h4>
-          <GolfTip />
+        <div className="w-full px-0 sm:px-6 md:px-0 max-w-none md:max-w-4xl">
+          <div className="border border-green-100 bg-green-50/80 shadow flex flex-col items-center py-4 px-2 sm:px-4 rounded-none md:rounded-xl">
+            <span className="text-green-600 text-2xl mb-1">💡</span>
+            <h4 className="font-bold text-green-800 mb-1">
+              Golf Tip of the Day
+            </h4>
+            <GolfTip />
+          </div>
         </div>
       </div>
       {/* Footer */}
-      <footer className="mt-8 text-center text-xs text-gray-500">
-        Designed by{" "}
-        <a
-          href="https://mjswebdesign.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-green-700 hover:underline font-semibold"
-        >
-          MJS Web Design
-        </a>
+      <footer className="mt-8 flex items-center justify-center text-center text-xs text-gray-500 min-h-8">
+        <span className="flex items-center gap-1">
+          Designed by{" "}
+          <a
+            href="https://mjswebdesign.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-green-700 hover:underline font-semibold"
+          >
+            MJS Web Design
+          </a>
+        </span>
       </footer>
     </div>
   );
