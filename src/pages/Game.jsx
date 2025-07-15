@@ -437,16 +437,7 @@ export default function Game() {
       }
     });
     setAnimatePrev(animatingPlayers);
-    // Find 3-putters (any putt 3 or above)
-    const threePutters = players.filter(
-      (p) => Number(putts[p.id]?.[currentHole]) >= 3
-    );
-    if (threePutters.length === 1) {
-      setChipHolder(threePutters[0].id);
-    } else if (threePutters.length > 1) {
-      setChipCandidates(threePutters);
-      setShowChipModal(true);
-    }
+
     // Save putts to DB for each player for this hole
     // Need to find the correct hole_id for the currentHole
     const { data: holes, error: holesError } = await supabase
@@ -486,6 +477,27 @@ export default function Game() {
         }
       }
     }
+
+    // --- CHIP LOGIC: Always assign chip to the player with the highest hole number 3-putt or higher ---
+    // Find the latest (highest hole number) 3-putt or higher for any player
+    let latestHole = 0;
+    let chipPlayerId = null;
+    players.forEach((p) => {
+      const playerPutts = putts[p.id] || {};
+      Object.entries(playerPutts).forEach(([holeNumStr, numPutts]) => {
+        const holeNum = Number(holeNumStr);
+        if (holeNum > latestHole && Number(numPutts) >= 3) {
+          latestHole = holeNum;
+          chipPlayerId = p.id;
+        }
+      });
+    });
+    if (chipPlayerId) {
+      setChipHolder(chipPlayerId);
+    } else {
+      setChipHolder(null);
+    }
+
     setTimeout(() => setAnimatePrev({}), 600); // clear after animation
     setCurrentHole((h) => {
       const next = h + 1;
@@ -495,8 +507,9 @@ export default function Game() {
   };
 
   // Handle chip assignment if multiple 3-putters
-  const assignChip = (playerId) => {
-    setChipHolder(playerId);
+  const assignChip = (userId) => {
+    const player = players.find((p) => p.user_id === userId);
+    if (player) setChipHolder(player.id);
     setShowChipModal(false);
   };
 
