@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/useAuth";
 
 import AuthPage from "./pages/AuthPage.jsx";
+import AuthConfirm from "./pages/AuthConfirm.jsx";
 import Dashboard from "./pages/Dashboard";
 import Game from "./pages/Game";
 import NotFound from "./pages/NotFound";
@@ -60,6 +61,7 @@ export default function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<AuthPage />} />
+        <Route path="/auth/confirm" element={<AuthConfirm />} />
         <Route path="/*" element={<Layout />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

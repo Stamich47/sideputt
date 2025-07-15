@@ -214,6 +214,8 @@ export default function AuthPage() {
             ? "Set New Password"
             : mode === "signin"
             ? "Sign In"
+            : mode === "reset"
+            ? "Reset Password"
             : "Sign Up"}
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
