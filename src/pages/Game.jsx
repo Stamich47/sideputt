@@ -1,3 +1,95 @@
+// Friendlier React Icons for scorecard
+import { FaStar, FaSmile, FaFrown } from "react-icons/fa";
+
+// Star icon for 0-putt
+function StarIcon({ className = "w-5 h-5 text-yellow-400" }) {
+  return <FaStar className={className} />;
+}
+
+// Smile icon for 1-putt
+function SmileIcon({ className = "w-5 h-5 text-green-500" }) {
+  return <FaSmile className={className} />;
+}
+
+// Frown icon for 3+ putts
+function FrownIcon({ className = "w-5 h-5 text-red-400" }) {
+  return <FaFrown className={className} />;
+}
+
+// Dollar bill SVG icon (red for 3+ putts)
+function DollarBillIcon({ className = "w-4 h-4", color = "#dc2626" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 20 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect
+        x="1"
+        y="1"
+        width="18"
+        height="12"
+        rx="2"
+        fill="#fee2e2"
+        stroke={color}
+        strokeWidth="1.5"
+      />
+      <circle
+        cx="10"
+        cy="7"
+        r="3"
+        fill="#fff1f2"
+        stroke={color}
+        strokeWidth="1"
+      />
+      <text
+        x="10"
+        y="9.5"
+        textAnchor="middle"
+        fontSize="6"
+        fontWeight="bold"
+        fill={color}
+      >
+        $
+      </text>
+    </svg>
+  );
+}
+// Golden animated 0 icon for 0-putts in scorecard
+function CasinoZeroIcon({
+  className = "w-6 h-6",
+  color = "#eab308",
+  animate = false,
+}) {
+  // Just a big, bold, glowing golden 0 (no coin/ellipse)
+  return (
+    <span className={animate ? "inline-block animate-bounce" : "inline-block"}>
+      <svg
+        className={className}
+        viewBox="0 0 32 32"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <text
+          x="16"
+          y="24"
+          textAnchor="middle"
+          fontSize="24"
+          fontWeight="bold"
+          fill={color}
+          style={{
+            filter: animate ? "drop-shadow(0 0 8px #facc15)" : "none",
+            fontFamily: "monospace, sans-serif",
+            letterSpacing: "2px",
+          }}
+        >
+          0
+        </text>
+      </svg>
+    </span>
+  );
+}
 // Utility functions for holes/putts creation
 import React, { useEffect, useState } from "react";
 import { CurrencyDollarIcon, SparklesIcon } from "@heroicons/react/24/outline";
@@ -117,6 +209,8 @@ const CardPlaceholder = () => (
 export default function Game() {
   // Animation state for prev hole putts
   const [animatePrev, setAnimatePrev] = useState({});
+  // --- Scorecard Modal State ---
+  const [showScorecard, setShowScorecard] = useState(false);
   // Inject animation CSS on mount (client only)
   React.useEffect(() => {
     if (
@@ -646,12 +740,12 @@ export default function Game() {
       <main className="w-full max-w-3xl flex flex-col gap-8 items-center">
         {/* Putts Table Card */}
         <section className="w-full bg-white rounded-2xl shadow border border-green-100 p-5 mb-2">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3">
-              <label className="text-base font-semibold text-neutral-800 flex items-center gap-2">
-                Hole
+          <div className="flex flex-col gap-2 mb-4">
+            <div className="flex flex-row items-center gap-4">
+              <label className="flex items-center gap-2 text-base font-semibold text-neutral-800">
+                <span>Hole</span>
                 <select
-                  className="ml-1 rounded px-3 py-1 border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-neutral-400 text-base font-semibold bg-neutral-50"
+                  className="rounded px-3 py-1 border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-neutral-400 text-base font-semibold bg-neutral-50"
                   value={currentHole}
                   onChange={(e) => {
                     const val = Number(e.target.value);
@@ -666,6 +760,156 @@ export default function Game() {
                   ))}
                 </select>
               </label>
+
+              <button
+                className="ml-2 bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-4 py-1 rounded shadow border border-blue-200 text-sm transition"
+                onClick={() => setShowScorecard(true)}
+              >
+                Scorecard
+              </button>
+
+              {/* Scorecard Modal */}
+              {showScorecard && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm"
+                  onClick={() => setShowScorecard(false)}
+                >
+                  <div
+                    className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl mx-4 flex flex-col gap-6 relative border-t-8 border-blue-200"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
+                      onClick={() => setShowScorecard(false)}
+                    >
+                      &times;
+                    </button>
+                    <h3 className="text-xl font-bold text-blue-700 mb-2">
+                      Putt Scorecard
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-center border border-gray-200 rounded-xl">
+                        <thead>
+                          <tr>
+                            <th
+                              className="px-2 py-2 text-base font-bold border-b border-gray-100 bg-blue-50 text-left whitespace-nowrap"
+                              style={{ fontSize: "16px" }}
+                            >
+                              Hole
+                            </th>
+                            {players.map((p) => {
+                              // Shrink columns for 2 players, expand for more
+                              let maxWidth = "80px";
+                              if (players.length === 3) maxWidth = "110px";
+                              else if (players.length === 4) maxWidth = "130px";
+                              else if (players.length > 4) maxWidth = "150px";
+                              return (
+                                <th
+                                  key={p.user_id}
+                                  className="px-1.5 py-2 text-xs font-semibold border-b border-gray-100 bg-blue-50 whitespace-nowrap overflow-hidden text-ellipsis"
+                                  style={{ fontSize: "14px", maxWidth }}
+                                >
+                                  {p.name}
+                                  {userId === p.user_id && (
+                                    <span className="ml-1 text-[10px] text-neutral-400 font-bold">
+                                      (You)
+                                    </span>
+                                  )}
+                                </th>
+                              );
+                            })}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: 18 }, (_, i) => (
+                            <tr key={i}>
+                              <td
+                                className="px-2 py-2 border-b border-gray-50 text-left font-semibold text-blue-900 whitespace-nowrap"
+                                style={{ fontSize: "14px" }}
+                              >
+                                {i + 1}
+                              </td>
+                              {players.map((p) => {
+                                let maxWidth = "80px";
+                                if (players.length === 3) maxWidth = "110px";
+                                else if (players.length === 4)
+                                  maxWidth = "130px";
+                                else if (players.length > 4) maxWidth = "150px";
+                                const val = putts[p.id]?.[i + 1];
+                                let numberContent = null;
+                                let icon = null;
+                                if (val == null || val === "") {
+                                  numberContent = (
+                                    <span className="text-gray-300">-</span>
+                                  );
+                                } else if (val === 0) {
+                                  numberContent = (
+                                    <CasinoZeroIcon animate={true} />
+                                  );
+                                  icon = (
+                                    <span className="flex items-center">
+                                      <StarIcon />
+                                    </span>
+                                  );
+                                } else if (val === 1) {
+                                  numberContent = (
+                                    <span className="text-green-600 font-bold">
+                                      1
+                                    </span>
+                                  );
+                                  icon = (
+                                    <span className="flex items-center">
+                                      <SmileIcon />
+                                    </span>
+                                  );
+                                } else if (val === 2) {
+                                  numberContent = (
+                                    <span className="text-black font-semibold">
+                                      2
+                                    </span>
+                                  );
+                                  icon = null;
+                                } else if (val >= 3) {
+                                  numberContent = (
+                                    <span className="text-red-600 font-bold">
+                                      {val}
+                                    </span>
+                                  );
+                                  icon = (
+                                    <span className="flex items-center">
+                                      <FrownIcon />
+                                    </span>
+                                  );
+                                } else {
+                                  numberContent = <span>{val}</span>;
+                                }
+                                return (
+                                  <td
+                                    key={p.user_id}
+                                    className="px-1.5 py-2 border-b border-gray-50 whitespace-nowrap overflow-hidden text-ellipsis"
+                                    style={{ fontSize: "14px", maxWidth }}
+                                  >
+                                    <span className="flex flex-row items-center justify-center gap-0">
+                                      {/* Number: always right-aligned in a fixed-width box */}
+                                      <span className="inline-block text-right min-w-[22px] max-w-[22px] pr-0.5 align-middle">
+                                        {numberContent}
+                                      </span>
+                                      {/* Icon: always left-aligned in a fixed-width box, so number never shifts */}
+                                      <span className="inline-block min-w-[22px] max-w-[22px] ml-2 align-middle">
+                                        {icon}
+                                      </span>
+                                    </span>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="overflow-x-auto rounded-xl">
