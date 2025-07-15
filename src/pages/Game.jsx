@@ -1,5 +1,45 @@
 // Utility functions for holes/putts creation
 import React, { useEffect, useState } from "react";
+import { CurrencyDollarIcon, SparklesIcon } from "@heroicons/react/24/outline";
+
+// Custom SVG Casino Chip Icon
+function CasinoChipIcon({ className = "w-4 h-4", color = "#eab308" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke={color}
+        strokeWidth="2"
+        fill="#fffbe6"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="5"
+        stroke={color}
+        strokeWidth="2"
+        fill="#fde68a"
+      />
+      <g stroke={color} strokeWidth="1.5">
+        <line x1="12" y1="2" x2="12" y2="5" />
+        <line x1="12" y1="19" x2="12" y2="22" />
+        <line x1="2" y1="12" x2="5" y2="12" />
+        <line x1="19" y1="12" x2="22" y2="12" />
+        <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" />
+        <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" />
+        <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" />
+        <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" />
+      </g>
+    </svg>
+  );
+}
 // ...existing imports...
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
@@ -74,22 +114,6 @@ const CardPlaceholder = () => (
   </div>
 );
 
-// Poker chip icon
-const ChipIcon = ({ className = "w-6 h-6" }) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <circle cx="12" cy="12" r="10" fill="#fbbf24" stroke="#b45309" />
-    <circle cx="12" cy="12" r="5" fill="#fff" stroke="#b45309" />
-  </svg>
-);
-
 export default function Game() {
   // Animation state for prev hole putts
   const [animatePrev, setAnimatePrev] = useState({});
@@ -138,13 +162,14 @@ export default function Game() {
   const [showInviteCode, setShowInviteCode] = useState(false);
   const [chipHolder, setChipHolder] = useState(null); // playerId
   const [showChipModal, setShowChipModal] = useState(false);
-  const [chipCandidates, setChipCandidates] = useState([]);
   const [isHost, setIsHost] = useState(false);
   const [userId, setUserId] = useState(null);
   // Modal for viewing putts history
   const [showPuttsModal, setShowPuttsModal] = useState(false);
   const [puttsModalPlayer, setPuttsModalPlayer] = useState(null);
   const [puttsModalData, setPuttsModalData] = useState([]); // Array of 18 putts
+  // Modal for game details
+  const [showGameDetails, setShowGameDetails] = useState(false);
   // Open modal to view putts for a player
   const handleViewPutts = async (player) => {
     setPuttsModalPlayer(player);
@@ -513,99 +538,363 @@ export default function Game() {
     setShowChipModal(false);
   };
 
+  // --- Clean, neutral UI ---
   return (
-    <div
-      className="min-h-screen w-full flex flex-col items-center px-2 sm:px-4 md:px-6"
-      style={{
-        background:
-          "linear-gradient(to bottom, #eaf3fb 0%, #eaf3fb 60%, #d1f7e7 100%)",
-        minHeight: "100vh",
-        paddingTop: 0,
-      }}
-    >
-      {/* End/Delete Game Modals */}
+    <div className="min-h-screen w-full flex flex-col items-center bg-gradient-to-br from-green-50 via-blue-50 to-green-100 px-2 sm:px-0">
+      {/* HEADER */}
+      <header className="w-full max-w-3xl mt-10 mb-8 px-4 flex flex-col gap-2">
+        <h1 className="text-3xl font-extrabold text-green-800 tracking-tight w-full text-center">
+          {session?.name || "Three Putt Poker"}
+        </h1>
+        <div className="flex flex-row items-center justify-between mt-2">
+          <div className="flex-1 flex items-center gap-2">
+            {session?.game_type && (
+              <span className="text-xs font-semibold text-green-700 bg-green-100 rounded px-2 py-0.5 align-middle border border-green-200">
+                {session.game_type === "three-putt"
+                  ? "Three Putt Poker"
+                  : session.game_type
+                      .replace(/-/g, " ")
+                      .replace(/\b\w/g, (l) => l.toUpperCase())}
+              </span>
+            )}
+          </div>
+          <button
+            className="ml-2 flex items-center gap-2 bg-neutral-100 hover:bg-neutral-200 text-green-900 font-semibold px-4 py-1 rounded-full border border-green-200 shadow-sm text-sm transition"
+            onClick={() => setShowGameDetails(true)}
+          >
+            <span>Game Details</span>
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
+            </svg>
+          </button>
+          {isHost && (
+            <button
+              className="ml-2 bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-1 rounded-lg shadow border border-green-400 transition-transform hover:scale-105 text-sm"
+              onClick={() => setShowInviteCode(true)}
+            >
+              Invite Players
+            </button>
+          )}
+        </div>
+      </header>
+      {/* Game Details Modal */}
+      {showGameDetails && session && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm"
+          onClick={() => setShowGameDetails(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 flex flex-col gap-6 relative border-t-8 border-green-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
+              onClick={() => setShowGameDetails(false)}
+            >
+              &times;
+            </button>
+            <h3 className="text-xl font-bold text-green-700 mb-2">
+              Game Details
+            </h3>
+            <div className="flex flex-col gap-3">
+              <span className="flex items-center gap-2 bg-green-100 rounded-full px-3 py-1 text-green-900 font-medium border border-green-200 text-sm min-w-fit">
+                <CurrencyDollarIcon className="w-4 h-4 text-green-500" />
+                Buy-In: ${session.buy_in_amount}
+              </span>
+              <span className="flex items-center gap-2 bg-green-100 rounded-full px-3 py-1 text-green-900 font-medium border border-green-200 text-sm min-w-fit">
+                <SparklesIcon className="w-4 h-4 text-green-500" />
+                3-Putt: ${session.three_putt_value}
+              </span>
+              {session.three_putt_chip_enabled && (
+                <span className="flex items-center gap-2 bg-yellow-100 rounded-full px-3 py-1 text-yellow-900 font-medium border border-yellow-200 text-sm min-w-fit">
+                  <CasinoChipIcon className="w-4 h-4" color="#eab308" />
+                  Chip: ${session.three_putt_chip_value}
+                </span>
+              )}
+              <span className="flex items-center gap-2 bg-blue-100 rounded-full px-3 py-1 text-blue-900 font-medium border border-blue-200 text-sm min-w-fit">
+                <svg
+                  className="w-4 h-4 text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16 7V3m0 0L8 7m8-4v18m0 0l-8-4m8 4H8"
+                  />
+                </svg>
+                Deal: {session.deal_method?.replace(/_/g, " ")}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MAIN CONTENT */}
+      <main className="w-full max-w-3xl flex flex-col gap-8 items-center">
+        {/* Putts Table Card */}
+        <section className="w-full bg-white rounded-2xl shadow border border-green-100 p-5 mb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div className="flex items-center gap-3">
+              <label className="text-base font-semibold text-neutral-800 flex items-center gap-2">
+                Hole
+                <select
+                  className="ml-1 rounded px-3 py-1 border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-neutral-400 text-base font-semibold bg-neutral-50"
+                  value={currentHole}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setCurrentHole(val);
+                    window.localStorage.setItem(`currentHole_${id}`, val);
+                  }}
+                >
+                  {Array.from({ length: 18 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-xl">
+            <table className="min-w-full text-center border-separate border-spacing-y-2">
+              <thead>
+                <tr className="bg-neutral-50">
+                  <th className="py-3 px-2 rounded-l-xl text-neutral-800 font-semibold">
+                    Player
+                  </th>
+                  {currentHole > 1 && (
+                    <th className="py-3 px-2 text-neutral-400 font-medium">
+                      Hole {currentHole - 1}
+                    </th>
+                  )}
+                  <th className="py-3 px-2 rounded-r-xl text-neutral-800 font-semibold">
+                    Putts
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {players.map((p) => (
+                  <tr
+                    key={p.user_id}
+                    className={
+                      (userId === p.user_id ? "bg-neutral-100 " : "") +
+                      "hover:bg-neutral-50 transition-colors"
+                    }
+                  >
+                    <td className="py-2 px-2 font-medium flex items-center justify-center gap-2 text-neutral-800">
+                      {chipHolder === p.id && (
+                        <span className="flex items-center gap-1 text-yellow-700 font-bold animate-bounce">
+                          <CasinoChipIcon className="w-5 h-5" color="#eab308" />
+                        </span>
+                      )}
+                      <span>{p.name}</span>
+                      {userId === p.user_id && (
+                        <span className="ml-1 text-xs text-neutral-500 font-bold">
+                          (You)
+                        </span>
+                      )}
+                    </td>
+                    {currentHole > 1 && (
+                      <td className="py-2 px-2">
+                        <span
+                          className={`text-neutral-400 transition-all duration-500 ${
+                            animatePrev[p.id] ? "slide-fade" : ""
+                          }`}
+                        >
+                          <PuttsDisplay
+                            playerId={p.id}
+                            currentHole={currentHole - 1}
+                            sessionId={session?.id}
+                          />
+                        </span>
+                      </td>
+                    )}
+                    <td className="py-2 px-2">
+                      {isHost ? (
+                        <input
+                          type="number"
+                          min="0"
+                          max="6"
+                          className="w-16 rounded px-2 py-1 border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-neutral-400 text-center mt-1 bg-neutral-50"
+                          value={
+                            putts[p.id]?.[currentHole] === 0
+                              ? 0
+                              : putts[p.id]?.[currentHole] ?? ""
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handlePuttChange(
+                              p.id,
+                              val === "" ? "" : Number(val)
+                            );
+                          }}
+                        />
+                      ) : (
+                        <PuttsDisplay
+                          playerId={p.id}
+                          currentHole={currentHole}
+                          sessionId={session?.id}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {isHost && (
+            <div className="flex flex-col sm:flex-row justify-end mt-6">
+              <button
+                className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white font-semibold px-5 py-2 rounded shadow border border-green-400 transition-transform hover:scale-105"
+                onClick={handleSubmitPutts}
+              >
+                Submit Putts
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Poker Hands Section */}
+        <section className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          {players.map((p) => (
+            <div
+              key={p.user_id}
+              className="bg-white rounded-2xl border border-blue-100 shadow p-6 flex flex-col items-center hover:shadow-lg transition-shadow"
+            >
+              <span className="font-semibold text-blue-900 mb-2 text-lg flex items-center gap-2">
+                {chipHolder === p.id && (
+                  <span className="flex items-center gap-1 text-yellow-700 font-bold animate-bounce">
+                    <CasinoChipIcon className="w-4 h-4" color="#eab308" />
+                  </span>
+                )}
+                {p.name}
+                {userId === p.user_id && (
+                  <span className="ml-1 text-xs text-neutral-500 font-bold">
+                    (You)
+                  </span>
+                )}
+              </span>
+              <div className="flex gap-2 mb-2">
+                <CardPlaceholder />
+                <CardPlaceholder />
+                <CardPlaceholder />
+                <CardPlaceholder />
+                <CardPlaceholder />
+              </div>
+              <span className="text-xs text-blue-500 mb-2">Poker Hand</span>
+              <button
+                className="bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-4 py-1 rounded shadow border border-blue-200 text-xs"
+                onClick={() => handleViewPutts(p)}
+              >
+                View Putts
+              </button>
+            </div>
+          ))}
+        </section>
+      </main>
+
+      {/* MODALS */}
+      {/* End Game Modal */}
       {showEndModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs mx-4 flex flex-col gap-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4 flex flex-col gap-6 relative border-t-8 border-neutral-200">
             <button
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
               onClick={() => setShowEndModal(false)}
             >
               &times;
             </button>
-            <h3 className="text-lg font-bold text-green-700 mb-2">End Game?</h3>
+            <h3 className="text-xl font-bold text-green-700 mb-2">End Game?</h3>
             <p className="text-gray-700">
               This will end the game for all players, but results will be saved
               to history. Are you sure?
             </p>
-            <button
-              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow font-semibold"
-              onClick={handleEndGame}
-            >
-              Yes, End Game
-            </button>
-            <button
-              className="text-gray-500 hover:text-gray-700 text-sm mt-1"
-              onClick={() => setShowEndModal(false)}
-            >
-              Cancel
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow font-semibold flex-1"
+                onClick={handleEndGame}
+              >
+                Yes, End Game
+              </button>
+              <button
+                className="text-gray-500 hover:text-gray-700 text-sm mt-1 flex-1"
+                onClick={() => setShowEndModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
+      {/* Delete Game Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs mx-4 flex flex-col gap-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4 flex flex-col gap-6 relative border-t-8 border-neutral-200">
             <button
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
               onClick={() => setShowDeleteModal(false)}
             >
               &times;
             </button>
-            <h3 className="text-lg font-bold text-red-700 mb-2">
+            <h3 className="text-xl font-bold text-red-700 mb-2">
               Delete Game?
             </h3>
             <p className="text-gray-700">
               This will permanently delete the game and all its data. This
               action cannot be undone.
             </p>
-            {deleteConfirmStep < 2 ? (
+            <div className="flex gap-2">
+              {deleteConfirmStep < 2 ? (
+                <button
+                  className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded shadow font-semibold flex-1"
+                  onClick={() => setDeleteConfirmStep((s) => s + 1)}
+                >
+                  {deleteConfirmStep === 0
+                    ? "Yes, I'm sure"
+                    : "Really, really sure?"}
+                </button>
+              ) : (
+                <button
+                  className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded shadow font-semibold flex-1"
+                  onClick={handleDeleteGame}
+                >
+                  Delete Forever
+                </button>
+              )}
               <button
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded shadow font-semibold"
-                onClick={() => setDeleteConfirmStep((s) => s + 1)}
+                className="text-gray-500 hover:text-gray-700 text-sm mt-1 flex-1"
+                onClick={() => setShowDeleteModal(false)}
               >
-                {deleteConfirmStep === 0
-                  ? "Yes, I'm sure"
-                  : "Really, really sure?"}
+                Cancel
               </button>
-            ) : (
-              <button
-                className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded shadow font-semibold"
-                onClick={handleDeleteGame}
-              >
-                Delete Forever
-              </button>
-            )}
-            <button
-              className="text-gray-500 hover:text-gray-700 text-sm mt-1"
-              onClick={() => setShowDeleteModal(false)}
-            >
-              Cancel
-            </button>
+            </div>
           </div>
         </div>
       )}
       {/* Invite Code Modal */}
       {showInviteCode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs mx-4 flex flex-col gap-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-xs mx-4 flex flex-col gap-6 relative border-t-8 border-neutral-200">
             <button
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
               onClick={() => setShowInviteCode(false)}
             >
               &times;
             </button>
-            <h3 className="text-lg font-bold text-green-700 mb-2">
+            <h3 className="text-xl font-bold text-green-700 mb-2">
               Game Invite Code
             </h3>
             <p className="text-gray-700 text-sm">
@@ -627,20 +916,16 @@ export default function Game() {
       )}
       {/* Chip Assignment Modal */}
       {showChipModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs mx-4 flex flex-col gap-4 relative">
-            <h3 className="text-lg font-bold text-yellow-700 mb-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-xs mx-4 flex flex-col gap-6 relative border-t-8 border-neutral-200">
+            <h3 className="text-xl font-bold text-yellow-700 mb-2">
               Who gets the chip?
             </h3>
-            {chipCandidates.map((p) => (
-              <button
-                key={p.user_id}
-                className="bg-yellow-400 hover:bg-yellow-500 text-white px-4 py-2 rounded shadow font-semibold"
-                onClick={() => assignChip(p.user_id)}
-              >
-                {p.name}
-              </button>
-            ))}
+            <div className="flex flex-col gap-2">
+              <span className="text-yellow-700 text-sm">
+                No chip candidates available.
+              </span>
+            </div>
             <button
               className="text-gray-500 hover:text-gray-700 text-sm mt-1"
               onClick={() => setShowChipModal(false)}
@@ -650,69 +935,21 @@ export default function Game() {
           </div>
         </div>
       )}
-      {/* Header */}
-      <div className="w-full max-w-3xl flex flex-col gap-4 mb-6 mt-12 px-2 sm:px-4 md:px-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-extrabold text-green-800">
-            {session?.name || "Three Putt Poker"}
-            {session?.game_type && (
-              <span className="ml-2 text-xs font-semibold text-green-600 bg-green-100 rounded px-2 py-0.5 align-middle">
-                {session.game_type === "three-putt"
-                  ? "Three Putt Poker"
-                  : session.game_type
-                      .replace(/-/g, " ")
-                      .replace(/\b\w/g, (l) => l.toUpperCase())}
-              </span>
-            )}
-          </h2>
-          {isHost && (
-            <div className="flex flex-col items-end gap-1">
-              <button
-                className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded shadow font-semibold"
-                onClick={() => setShowInviteCode(true)}
-              >
-                Invite Code
-              </button>
-              {/* Removed code display under Invite Code button */}
-            </div>
-          )}
-        </div>
-        {/* ...existing code... */}
-        {/* Show buy-in, three-putt value, chip, deal method, etc. */}
-        {session && (
-          <div className="flex flex-wrap gap-3 text-sm text-gray-700 mt-2">
-            <span className="bg-green-100 rounded px-2 py-0.5 font-semibold">
-              Buy-In: ${session.buy_in_amount}
-            </span>
-            <span className="bg-green-100 rounded px-2 py-0.5 font-semibold">
-              Three-Putt Value: ${session.three_putt_value}
-            </span>
-            {session.three_putt_chip_enabled && (
-              <span className="bg-yellow-100 rounded px-2 py-0.5 font-semibold">
-                Chip: ${session.three_putt_chip_value}
-              </span>
-            )}
-            <span className="bg-blue-100 rounded px-2 py-0.5 font-semibold">
-              Deal: {session.deal_method?.replace(/_/g, " ")}
-            </span>
-          </div>
-        )}
-      </div>
       {/* Join by Code Modal (if user not in session_players) */}
       {showJoinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs mx-4 flex flex-col gap-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-xs mx-4 flex flex-col gap-6 relative border-t-8 border-neutral-200">
             <button
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
               onClick={() => setShowJoinModal(false)}
             >
               &times;
             </button>
-            <h3 className="text-lg font-bold text-green-700 mb-2">Join Game</h3>
+            <h3 className="text-xl font-bold text-green-700 mb-2">Join Game</h3>
             <input
               type="text"
               placeholder="Enter Game Code"
-              className="rounded px-3 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 uppercase tracking-widest font-mono"
+              className="rounded-lg px-3 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 uppercase tracking-widest font-mono text-center text-lg"
               value={joinCodeInput}
               onChange={(e) => setJoinCodeInput(e.target.value)}
               maxLength={8}
@@ -729,162 +966,27 @@ export default function Game() {
           </div>
         </div>
       )}
-      {/* Putts Per Hole Table */}
-      <div className="w-full max-w-3xl rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl p-4 mb-6 px-2 sm:px-4 md:px-6">
-        <div className="flex items-center gap-4 mb-2">
-          <label className="text-lg font-semibold flex items-center gap-2">
-            Hole
-            <select
-              className="ml-1 rounded px-2 py-1 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 text-lg font-semibold"
-              value={currentHole}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                setCurrentHole(val);
-                window.localStorage.setItem(`currentHole_${id}`, val);
-              }}
-            >
-              {Array.from({ length: 18 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  {i + 1}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <table className="w-full text-center">
-          <thead>
-            <tr>
-              <th className="py-2">Player</th>
-              {currentHole > 1 && (
-                <th className="py-2 text-gray-400">Hole {currentHole - 1}</th>
-              )}
-              <th className="py-2">Putts</th>
-            </tr>
-          </thead>
-          <tbody>
-            {players.map((p) => (
-              <tr
-                key={p.user_id}
-                className={userId === p.user_id ? "bg-green-50" : ""}
-              >
-                <td
-                  className={
-                    "py-2 font-semibold flex items-center justify-center gap-2 " +
-                    (userId === p.user_id ? "text-green-900" : "text-green-800")
-                  }
-                >
-                  {chipHolder === p.id && (
-                    <span className="flex items-center gap-1 text-yellow-700 font-bold">
-                      <ChipIcon className="w-4 h-4" />
-                    </span>
-                  )}
-                  {p.name}
-                  {userId === p.user_id && (
-                    <span className="ml-1 text-xs text-green-500 font-bold">
-                      (You)
-                    </span>
-                  )}
-                </td>
-                {currentHole > 1 && (
-                  <td className="py-2">
-                    <span
-                      className={`text-gray-400 transition-all duration-500 ${
-                        animatePrev[p.id] ? "slide-fade" : ""
-                      }`}
-                    >
-                      <PuttsDisplay
-                        playerId={p.id}
-                        currentHole={currentHole - 1}
-                        sessionId={session?.id}
-                      />
-                    </span>
-                  </td>
-                )}
-                <td className="py-2">
-                  {/* For host: always show input box, prefilled with value; for others: show DB value only */}
-                  {isHost ? (
-                    <input
-                      type="number"
-                      min="0"
-                      max="6"
-                      className="w-16 rounded px-2 py-1 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 text-center mt-1"
-                      value={
-                        putts[p.id]?.[currentHole] === 0
-                          ? 0
-                          : putts[p.id]?.[currentHole] ?? ""
-                      }
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        handlePuttChange(p.id, val === "" ? "" : Number(val));
-                      }}
-                    />
-                  ) : (
-                    <PuttsDisplay
-                      playerId={p.id}
-                      currentHole={currentHole}
-                      sessionId={session?.id}
-                    />
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {isHost && (
-          <button
-            className="mt-4 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow font-semibold"
-            onClick={handleSubmitPutts}
-          >
-            Submit Putts
-          </button>
-        )}
-      </div>
-      {/* Poker Hands Section */}
-      <div className="w-full max-w-3xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 px-2 sm:px-4 md:px-6">
-        {players.map((p) => (
-          <div
-            key={p.user_id}
-            className="bg-white/70 rounded-2xl border border-white/60 backdrop-blur-lg shadow-2xl p-4 flex flex-col items-center"
-          >
-            <span className="font-bold text-green-800 mb-2">{p.name}</span>
-            <div className="flex gap-2 mb-2">
-              <CardPlaceholder />
-              <CardPlaceholder />
-              <CardPlaceholder />
-              <CardPlaceholder />
-              <CardPlaceholder />
-            </div>
-            <span className="text-xs text-gray-500">Poker Hand</span>
-            <button
-              className="mt-2 bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-3 py-1 rounded shadow border border-blue-200 text-xs"
-              onClick={() => handleViewPutts(p)}
-            >
-              View Putts
-            </button>
-          </div>
-        ))}
-      </div>
       {/* Putts History Modal */}
       {showPuttsModal && puttsModalPlayer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl mx-4 flex flex-col gap-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl mx-4 flex flex-col gap-6 relative border-t-8 border-neutral-200">
             <button
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
               onClick={() => setShowPuttsModal(false)}
             >
               &times;
             </button>
-            <h3 className="text-lg font-bold text-blue-700 mb-2">
+            <h3 className="text-xl font-bold text-blue-700 mb-2">
               {puttsModalPlayer.name}'s Putts (18 Holes)
             </h3>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-center border border-gray-200 rounded">
+              <table className="min-w-full text-center border border-gray-200 rounded-xl">
                 <thead>
                   <tr>
                     {Array.from({ length: 18 }, (_, i) => (
                       <th
                         key={i}
-                        className="px-2 py-1 text-xs font-semibold border-b border-gray-100"
+                        className="px-2 py-1 text-xs font-semibold border-b border-gray-100 bg-blue-50"
                       >
                         {i + 1}
                       </th>
@@ -911,15 +1013,15 @@ export default function Game() {
       )}
       {/* Host controls: End/Delete Game at bottom */}
       {isHost && (
-        <div className="w-full max-w-3xl flex gap-2 justify-end mt-8 px-2 sm:px-4 md:px-6">
+        <footer className="w-full max-w-4xl flex gap-2 justify-end mt-10 px-4 mb-8">
           <button
-            className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-semibold px-4 py-2 rounded shadow border border-yellow-300"
+            className="bg-yellow-400 hover:bg-yellow-500 text-white font-semibold px-6 py-2 rounded-xl shadow border border-yellow-500"
             onClick={() => setShowEndModal(true)}
           >
             End Game
           </button>
           <button
-            className="bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-4 py-2 rounded shadow border border-red-300"
+            className="bg-red-500 hover:bg-red-600 text-white font-semibold px-6 py-2 rounded-xl shadow border border-red-600"
             onClick={() => {
               setShowDeleteModal(true);
               setDeleteConfirmStep(0);
@@ -927,10 +1029,8 @@ export default function Game() {
           >
             Delete Game
           </button>
-        </div>
+        </footer>
       )}
     </div>
   );
 }
-
-// ---
