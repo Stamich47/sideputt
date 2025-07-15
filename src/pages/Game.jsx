@@ -211,6 +211,36 @@ export default function Game() {
   const [animatePrev, setAnimatePrev] = useState({});
   // --- Scorecard Modal State ---
   const [showScorecard, setShowScorecard] = useState(false);
+  // --- Live Payouts Modal State ---
+  const [showPotModal, setShowPotModal] = useState(false);
+  // Calculate payouts for each player (must be before return and outside JSX)
+  function getPayouts() {
+    if (!session || players.length === 0) return [];
+    const payouts = players.map(function (p) {
+      let total = 0;
+      // Buy-in
+      total += Number(session.buy_in_amount) || 0;
+      // 3-putt penalties
+      const playerPutts = putts[p.id] || {};
+      let threePuttCount = 0;
+      Object.values(playerPutts).forEach(function (numPutts) {
+        if (Number(numPutts) >= 3) threePuttCount++;
+      });
+      total += threePuttCount * (Number(session.three_putt_value) || 0);
+      // Chip value (if currently holding chip)
+      if (chipHolder === p.id && session.three_putt_chip_enabled) {
+        total += Number(session.three_putt_chip_value) || 0;
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        total: total,
+        threePuttCount: threePuttCount,
+        hasChip: chipHolder === p.id,
+      };
+    });
+    return payouts;
+  }
   // Inject animation CSS on mount (client only)
   React.useEffect(() => {
     if (
@@ -445,6 +475,43 @@ export default function Game() {
             await createPuttsForPlayer(sessionData.id, thisPlayer.id);
           }
         }
+        // --- CHIP HOLDER: always compute from latest putts data ---
+        if (sessionData.three_putt_chip_enabled) {
+          // Fetch all putts for this session
+          const { data: allPutts, error: allPuttsError } = await supabase
+            .from("putts")
+            .select("player_id, num_putts, hole_id, session_id, holes(number)")
+            .eq("session_id", sessionData.id);
+          if (allPuttsError) {
+            console.error(
+              "[CHIP HOLDER DEBUG] Error fetching all putts for chip logic",
+              allPuttsError
+            );
+            setChipHolder(null);
+          } else {
+            // Find the highest hole number with a 3+ putt
+            let latestHole = 0;
+            let candidates = [];
+            for (const row of allPutts) {
+              const holeNum = row.holes?.number;
+              if (holeNum && Number(row.num_putts) >= 3) {
+                if (holeNum > latestHole) {
+                  latestHole = holeNum;
+                  candidates = [row.player_id];
+                } else if (holeNum === latestHole) {
+                  candidates.push(row.player_id);
+                }
+              }
+            }
+            if (latestHole > 0 && candidates.length === 1) {
+              setChipHolder(candidates[0]);
+            } else {
+              setChipHolder(null);
+            }
+          }
+        } else {
+          setChipHolder(null);
+        }
       }
       // ---
     };
@@ -597,24 +664,48 @@ export default function Game() {
       }
     }
 
-    // --- CHIP LOGIC: Always assign chip to the player with the highest hole number 3-putt or higher ---
+    // --- CHIP LOGIC: Assign chip to player(s) with latest 3+ putt ---
     // Find the latest (highest hole number) 3-putt or higher for any player
     let latestHole = 0;
-    let chipPlayerId = null;
     players.forEach((p) => {
       const playerPutts = putts[p.id] || {};
       Object.entries(playerPutts).forEach(([holeNumStr, numPutts]) => {
         const holeNum = Number(holeNumStr);
         if (holeNum > latestHole && Number(numPutts) >= 3) {
           latestHole = holeNum;
-          chipPlayerId = p.id;
         }
       });
     });
-    if (chipPlayerId) {
-      setChipHolder(chipPlayerId);
+    // Find all players with a 3+ on the latestHole
+    const chipCandidates = players.filter((p) => {
+      const playerPutts = putts[p.id] || {};
+      return Number(playerPutts[latestHole]) >= 3;
+    });
+    if (latestHole > 0 && chipCandidates.length === 1) {
+      setChipHolder(chipCandidates[0].id);
+      // Persist chip assignment to backend
+      if (session?.three_putt_chip_enabled) {
+        await supabase.from("chip_events").insert([
+          {
+            session_id: session.id,
+            player_id: chipCandidates[0].id,
+          },
+        ]);
+      }
+    } else if (latestHole > 0 && chipCandidates.length > 1) {
+      // Multiple candidates: show modal to pick
+      setShowChipModal(true);
     } else {
       setChipHolder(null);
+      // Persist chip removal to backend
+      if (session?.three_putt_chip_enabled) {
+        await supabase.from("chip_events").insert([
+          {
+            session_id: session.id,
+            player_id: null,
+          },
+        ]);
+      }
     }
 
     setTimeout(() => setAnimatePrev({}), 600); // clear after animation
@@ -628,7 +719,18 @@ export default function Game() {
   // Handle chip assignment if multiple 3-putters
   const assignChip = (userId) => {
     const player = players.find((p) => p.user_id === userId);
-    if (player) setChipHolder(player.id);
+    if (player) {
+      setChipHolder(player.id);
+      // Persist chip assignment to backend
+      if (session?.three_putt_chip_enabled) {
+        supabase.from("chip_events").insert([
+          {
+            session_id: session.id,
+            player_id: player.id,
+          },
+        ]);
+      }
+    }
     setShowChipModal(false);
   };
 
@@ -767,6 +869,103 @@ export default function Game() {
               >
                 Scorecard
               </button>
+
+              <button
+                className="ml-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-semibold px-4 py-1 rounded shadow border border-yellow-300 text-sm transition h-[36px] flex items-center"
+                style={{ minHeight: "36px" }}
+                onClick={() => setShowPotModal(true)}
+              >
+                Current Pot
+              </button>
+              {/* Live Payouts Modal */}
+              {showPotModal && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm px-2 sm:px-6"
+                  onClick={() => setShowPotModal(false)}
+                >
+                  <div
+                    className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-auto flex flex-col gap-6 relative border-t-8 border-yellow-200"
+                    style={{ marginLeft: "auto", marginRight: "auto" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
+                      onClick={() => setShowPotModal(false)}
+                    >
+                      &times;
+                    </button>
+                    <h3 className="text-xl font-bold text-yellow-700 mb-2">
+                      Current Pot
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-center border border-gray-200 rounded-xl">
+                        <thead>
+                          <tr>
+                            <th className="px-2 py-1 text-sm font-bold border-b border-gray-100 bg-yellow-50 text-left whitespace-nowrap">
+                              Player
+                            </th>
+                            <th className="px-2 py-1 text-sm font-bold border-b border-gray-100 bg-yellow-50 whitespace-nowrap">
+                              Buy-In
+                            </th>
+                            <th className="px-2 py-1 text-sm font-bold border-b border-gray-100 bg-yellow-50 whitespace-nowrap">
+                              3-Putts
+                            </th>
+                            <th className="px-2 py-1 text-sm font-bold border-b border-gray-100 bg-yellow-50 whitespace-nowrap">
+                              Chip
+                            </th>
+                            <th className="px-2 py-1 text-sm font-bold border-b border-gray-100 bg-yellow-50 whitespace-nowrap">
+                              Total Owed
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getPayouts().map((p) => (
+                            <tr key={p.id}>
+                              <td className="px-2 py-1 border-b border-gray-50 text-left font-semibold text-yellow-900 whitespace-nowrap text-sm">
+                                {p.name}{" "}
+                                {userId === p.id && (
+                                  <span className="ml-1 text-xs text-neutral-400 font-bold">
+                                    (You)
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-2 py-1 border-b border-gray-50 text-sm">
+                                $
+                                {Number(session?.buy_in_amount || 0).toFixed(2)}
+                              </td>
+                              <td className="px-2 py-1 border-b border-gray-50 text-sm">
+                                {session?.three_putt_value &&
+                                p.threePuttCount > 0
+                                  ? `$${(
+                                      p.threePuttCount *
+                                      Number(session.three_putt_value)
+                                    ).toFixed(2)} (${p.threePuttCount})`
+                                  : "-"}
+                              </td>
+                              <td className="px-2 py-1 border-b border-gray-50 text-sm">
+                                {p.hasChip && session?.three_putt_chip_enabled
+                                  ? `$${Number(
+                                      session.three_putt_chip_value || 0
+                                    ).toFixed(2)}`
+                                  : "-"}
+                              </td>
+                              <td className="px-2 py-1 border-b border-gray-50 font-bold text-yellow-700 text-sm">
+                                ${p.total.toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      <span>
+                        Includes buy-in, 3+ putt penalties, and chip value (if
+                        held).
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Scorecard Modal */}
               {showScorecard && (
@@ -1166,9 +1365,44 @@ export default function Game() {
               Who gets the chip?
             </h3>
             <div className="flex flex-col gap-2">
-              <span className="text-yellow-700 text-sm">
-                No chip candidates available.
-              </span>
+              {players &&
+                (() => {
+                  // Find latestHole and candidates again for modal
+                  let latestHole = 0;
+                  players.forEach((p) => {
+                    const playerPutts = putts[p.id] || {};
+                    Object.entries(playerPutts).forEach(
+                      ([holeNumStr, numPutts]) => {
+                        const holeNum = Number(holeNumStr);
+                        if (holeNum > latestHole && Number(numPutts) >= 3) {
+                          latestHole = holeNum;
+                        }
+                      }
+                    );
+                  });
+                  const chipCandidates = players.filter((p) => {
+                    const playerPutts = putts[p.id] || {};
+                    return Number(playerPutts[latestHole]) >= 3;
+                  });
+                  if (chipCandidates.length > 0) {
+                    return chipCandidates.map((p) => (
+                      <button
+                        key={p.id}
+                        className="flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-900 font-semibold px-4 py-2 rounded-lg border border-yellow-300 shadow transition"
+                        onClick={() => assignChip(p.user_id)}
+                      >
+                        <CasinoChipIcon className="w-4 h-4" color="#eab308" />
+                        {p.name}
+                      </button>
+                    ));
+                  } else {
+                    return (
+                      <span className="text-yellow-700 text-sm">
+                        No chip candidates available.
+                      </span>
+                    );
+                  }
+                })()}
             </div>
             <button
               className="text-gray-500 hover:text-gray-700 text-sm mt-1"
