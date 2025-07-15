@@ -1,3 +1,65 @@
+// Collapsible My Stats Card component
+function CollapsibleStatsCard() {
+  const [open, setOpen] = React.useState(true);
+  return (
+    <div className="w-full flex items-center justify-center my-6">
+      <div className="flex-1 rounded-2xl border border-green-200 bg-white/80 shadow-lg flex flex-col items-center px-3 transition-all duration-300">
+        <button
+          className="w-full flex items-center justify-between py-4 focus:outline-none group"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span className="flex items-center gap-2 w-full justify-center">
+            <span className="text-green-500 text-2xl">🏌️‍♂️</span>
+            <span className="text-xl font-bold text-center w-full">
+              My Stats
+            </span>
+          </span>
+          <svg
+            className={`w-6 h-6 text-green-600 transform transition-transform duration-300 ${
+              open ? "" : "rotate-180"
+            }`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </button>
+        <div
+          className={`overflow-hidden transition-all duration-300 ${
+            open ? "max-h-40 py-2" : "max-h-0 py-0"
+          }`}
+          style={{
+            transitionProperty: "max-height, padding",
+          }}
+        >
+          {open && (
+            <div className="flex flex-col gap-1 text-gray-700 text-sm items-center">
+              <span>
+                Games Played: <span className="font-semibold">0</span>
+              </span>
+              <span>
+                Best Score: <span className="font-semibold">—</span>
+              </span>
+              <span>
+                Birdies: <span className="font-semibold">—</span>
+              </span>
+              <span>
+                Three Putts: <span className="font-semibold">—</span>
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
@@ -19,6 +81,63 @@ const PlusIcon = ({ className = "w-8 h-8" }) => (
     />
   </svg>
 );
+
+function GolfTip() {
+  const tips = [
+    "If you can't fix your slice, just aim further left.",
+    "Remember: The more expensive the ball, the more likely it is to find water.",
+    "Golf is 90% mental. The other 10% is mental, too.",
+    "A bad day on the course beats a good day at work.",
+    "If all else fails, blame your clubs.",
+    "Practice makes permanent, not perfect.",
+    "The shorter the putt, the more your hands shake.",
+    "Always keep your head down—unless you're looking for your ball.",
+    "Golf: The art of playing fetch with yourself.",
+    "Drive for show, putt for dough, whiff for laughs.",
+    "If you find a ball on the course, it's probably yours from last week.",
+    "Golf carts: Because walking is for quitters.",
+    "The best wood in your bag is your pencil.",
+    "Swing like you’re mad at your ex.",
+    "If it’s not going straight, just call it a ‘power fade.’",
+    "Remember: golf balls are cheaper than therapy.",
+    "Dress like a pro. Play like a drunk uncle.",
+    "The cart path is just an aggressive fairway.",
+    "Use the toe of the putter if you’re feeling fancy—or desperate.",
+    "You’re not slicing—you’re exploring adjacent fairways.",
+    "Tee it high, let it fly... then say a prayer.",
+    "A 3-putt means more time to bond with your shame.",
+    "Golf: where grown men cry quietly in the bushes.",
+    "You’re only one good shot away from pretending you know what you're doing.",
+    "Trust your swing. And your luck.",
+    "Every great golfer was once a hacker. You’re halfway there.",
+    "You can’t lose if you don’t keep score.",
+    "Sand saves are mostly luck. Just own it.",
+    "If it goes in the water, it wanted to be free.",
+    "The golf gods demand a sacrifice. Usually your scorecard.",
+    "Read the green like it owes you money.",
+    "Swing easy. Curse hard.",
+    "The only consistent part of your game should be your excuses.",
+    "Aim small, miss wildly.",
+    "Keep your head down, unless someone yells ‘beer cart.’",
+    "Three-putts build character. And rage.",
+    "A bogey is just a par with more drama.",
+    "Confidence is key. Skill is optional.",
+    "A mulligan a day keeps the triple bogey away.",
+    "Putt like you’re mad at the ball.",
+    "Wind is nature’s way of keeping your ego in check.",
+    "If you can't dazzle them with your swing, distract them with your outfit.",
+    "Practice makes pars. Sometimes.",
+    "The shorter the putt, the greater the pressure. And the greater the chance of humiliation.",
+    "Your driver is for distance. Your putter is for pride.",
+    "Grip it and sip it. Golf is better with a beverage.",
+    "The more you swing, the more you learn. Allegedly.",
+    "Aim for the green. Settle for the fairway. Accept the sand.",
+  ];
+  const [tip] = React.useState(
+    () => tips[Math.floor(Math.random() * tips.length)]
+  );
+  return <span className="italic text-green-900 text-center">{tip}</span>;
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -117,11 +236,14 @@ export default function Dashboard() {
       style={{
         background:
           "linear-gradient(to bottom, #eaf3fb 0%, #eaf3fb 60%, #d1f7e7 100%)",
+        minHeight: "100vh",
+        paddingTop: 0,
       }}
     >
-      <div className="w-full max-w-4xl flex flex-col gap-6 mt-12 px-3 sm:px-6 md:px-0 relative">
+      <div className="w-full max-w-4xl flex flex-col mt-12 px-3 sm:px-6 md:px-0 relative">
+        {/* Game History & Rules side by side on all screens */}
         {/* Start/Join Game Button */}
-        <div className="w-full mb-2">
+        <div className="w-full mb-6">
           <button
             className="w-full flex items-center justify-center gap-3 rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl py-6 px-3 text-green-700 font-bold text-xl hover:bg-green-50 transition-all focus:outline-none"
             onClick={() => {
@@ -225,7 +347,6 @@ export default function Dashboard() {
                           </span>
                           <input
                             type="number"
-                            min="0"
                             className="pl-7 rounded px-3 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 w-full"
                             value={startingAmount === 0 ? "" : startingAmount}
                             onChange={(e) =>
@@ -444,7 +565,7 @@ export default function Dashboard() {
           </div>
         )}
         {/* Active Game Bars (all active games, full width) */}
-        <div className="w-full mb-0" ref={newGameRef}>
+        <div className="w-full mb-6" ref={newGameRef}>
           {gameCreateError && (
             <div className="text-red-500 text-center py-2">
               {gameCreateError}
@@ -511,7 +632,7 @@ export default function Dashboard() {
         )}
 
         {/* Game History & Rules side by side on all screens */}
-        <div className="flex flex-row gap-8 w-full mt-0">
+        <div className="flex flex-row gap-8 w-full mt-0 mb-6">
           <div className="flex-1 min-w-0 rounded-2xl border border-white/60 bg-white/70 backdrop-blur-lg shadow-2xl flex flex-col items-center justify-center py-6 px-3">
             <span className="text-blue-500 text-4xl mb-2">📜</span>
             <h3 className="text-xl font-bold mb-1">Game History</h3>
@@ -523,9 +644,21 @@ export default function Dashboard() {
             {/* Subtext removed */}
           </div>
         </div>
+        {/* My Stats Placeholder Card (now below Game History/Rules, collapsible) */}
+        <div className="mb-4">
+          <CollapsibleStatsCard />
+        </div>
+      </div>
+      {/* Funny/Cheeky Golf Tip of the Day */}
+      <div className="w-full flex items-center justify-center mt-0 mb-4">
+        <div className="rounded-xl border border-green-100 bg-green-50/80 shadow flex flex-col items-center py-4 px-4 max-w-md w-full">
+          <span className="text-green-600 text-2xl mb-1">💡</span>
+          <h4 className="font-bold text-green-800 mb-1">Golf Tip of the Day</h4>
+          <GolfTip />
+        </div>
       </div>
       {/* Footer */}
-      <footer className="mt-12 text-center text-xs text-gray-500">
+      <footer className="mt-8 text-center text-xs text-gray-500">
         Designed by{" "}
         <a
           href="https://mjswebdesign.com"

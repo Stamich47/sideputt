@@ -21,10 +21,11 @@ function PrivateRoute({ children }) {
 }
 
 function Layout() {
+  const { user } = useAuth();
   return (
     <>
-      <Navbar />
-      <main className="min-h-[calc(100vh-56px)]">
+      <Navbar user={user} />
+      <main className="pt-16 min-h-[calc(100vh-56px)]">
         <Routes>
           <Route
             path="/"
