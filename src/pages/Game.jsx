@@ -1,5 +1,6 @@
 // Utility functions for holes/putts creation
 import React, { useEffect, useState } from "react";
+// ...existing imports...
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -8,45 +9,57 @@ import {
 } from "../lib/supabaseGameUtils";
 
 // Show the putts for a player for the selected hole (non-hosts)
-function PuttsDisplay({ playerId, currentHole, putts, sessionId }) {
-  const [value, setValue] = useState(putts[playerId]?.[currentHole] || null);
+function PuttsDisplay({ playerId, currentHole, sessionId }) {
+  const [value, setValue] = useState(null);
 
   useEffect(() => {
-    if (putts[playerId]?.[currentHole] != null) {
-      setValue(putts[playerId][currentHole]);
+    if (!sessionId || !playerId || !currentHole) {
+      setValue(null);
       return;
     }
-    if (!sessionId || !playerId || !currentHole) return;
     let isMounted = true;
     async function fetchPutt() {
       const { data: holes, error: holesError } = await supabase
         .from("holes")
         .select("id, number")
         .eq("session_id", sessionId);
-      if (holesError) return;
+      if (holesError) {
+        if (isMounted) setValue(null);
+        return;
+      }
       const hole = holes.find((h) => h.number === currentHole);
-      if (!hole) return;
-      const { data: puttRow, error: puttError } = await supabase
+      if (!hole) {
+        if (isMounted) setValue(null);
+        return;
+      }
+      const { data: puttRows, error: puttError } = await supabase
         .from("putts")
-        .select("num_putts")
+        .select("num_putts, player_id, session_id, hole_id")
         .eq("session_id", sessionId)
         .eq("player_id", playerId)
-        .eq("hole_id", hole.id)
-        .single();
-      if (!puttError && puttRow && isMounted) {
-        setValue(puttRow.num_putts);
+        .eq("hole_id", hole.id);
+      if (puttError) {
+        if (isMounted) setValue(null);
+        return;
+      }
+      if (puttRows && puttRows.length > 0) {
+        if (isMounted) setValue(puttRows[0].num_putts);
+      } else {
+        if (isMounted) setValue(null);
       }
     }
     fetchPutt();
     return () => {
       isMounted = false;
     };
-  }, [playerId, currentHole, sessionId, putts]);
+  }, [playerId, currentHole, sessionId]);
 
   return (
     <span>
-      {value == null || value === "" ? (
+      {value === null || value === "" || typeof value === "undefined" ? (
         <span className="text-gray-400">-</span>
+      ) : value === 0 ? (
+        0
       ) : (
         value
       )}
@@ -78,6 +91,40 @@ const ChipIcon = ({ className = "w-6 h-6" }) => (
 );
 
 export default function Game() {
+  // Animation state for prev hole putts
+  const [animatePrev, setAnimatePrev] = useState({});
+  // Inject animation CSS on mount (client only)
+  React.useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      !document.getElementById("putts-anim-style")
+    ) {
+      const style = document.createElement("style");
+      style.id = "putts-anim-style";
+      style.innerHTML = `
+        .slide-fade {
+          animation: slideFadeLeft 0.6s cubic-bezier(0.4,0,0.2,1);
+        }
+        @keyframes slideFadeLeft {
+          0% {
+            opacity: 1;
+            transform: translateX(60px) scale(1.2);
+            color: #374151;
+          }
+          60% {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+            color: #374151;
+          }
+          100% {
+            opacity: 1;
+            color: #9ca3af;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
   const { id } = useParams();
   const [session, setSession] = useState(null);
   const [players, setPlayers] = useState([]);
@@ -101,33 +148,20 @@ export default function Game() {
   // Open modal to view putts for a player
   const handleViewPutts = async (player) => {
     setPuttsModalPlayer(player);
-    const playerId = player.id || player.player_id || player.session_player_id;
+    // Always use player.id (session_players.id)
+    const playerId = player.id;
     if (!playerId || !session?.id) {
-      console.log("[PUTTS MODAL DEBUG] Missing playerId or sessionId", {
-        player,
-        playerId,
-        session,
-      });
       setPuttsModalData(Array(18).fill(null));
       setShowPuttsModal(true);
       return;
     }
-    console.log("[PUTTS MODAL DEBUG] Querying putts for", {
-      sessionId: session.id,
-      playerId,
-    });
-    // Join putts with holes to get hole number (column is 'number')
+    // Query only this session and player, join holes for number, order by holes.number
     const { data: puttsRows, error } = await supabase
       .from("putts")
       .select("hole_id, num_putts, player_id, session_id, holes(number)")
       .eq("session_id", session.id)
       .eq("player_id", playerId)
-      .order("hole_id"); // Order by foreign key, then sort in JS
-    if (error) {
-      console.error("[PUTTS MODAL DEBUG] Supabase error:", error);
-    } else {
-      console.log("[PUTTS MODAL DEBUG] puttsRows:", puttsRows);
-    }
+      .order("hole_id");
     if (!error && puttsRows) {
       // Sort by holes.number in JS to ensure correct order
       const sortedRows = [...puttsRows].sort((a, b) => {
@@ -216,7 +250,6 @@ export default function Game() {
       if (playerError) {
         console.error("Supabase session_players fetch error:", playerError);
       }
-      //
       // Only insert user if not present and not immediately after game creation
       let thisPlayer = playerData?.find((p) => p.user_id === currentUserId);
       if (currentUserId && sessionData && playerData && !thisPlayer) {
@@ -236,7 +269,6 @@ export default function Game() {
             },
           ])
           .select();
-        //
         if (!insertError && insertData && insertData.length > 0) {
           thisPlayer = insertData[0];
           playerData.push(thisPlayer);
@@ -253,7 +285,6 @@ export default function Game() {
             playerData.push(thisPlayer);
           }
         }
-        // No join modal for host
         setShowJoinModal(false);
       } else if (
         currentUserId &&
@@ -261,7 +292,6 @@ export default function Game() {
         playerData &&
         !playerData.some((p) => p.user_id === currentUserId)
       ) {
-        // Show join modal for non-members
         setShowJoinModal(true);
       }
       // Ensure each player has an id property (session_players.id)
@@ -276,25 +306,23 @@ export default function Game() {
 
       // ---
       // Backend logic: ensure holes and putts exist for this session/player
-      if (sessionData && playerData) {
-        // Check if holes exist for this session
+      if (sessionData) {
+        // Only create holes if none exist for this session
         const { data: holes, error: holesError } = await supabase
           .from("holes")
-          .select("*")
+          .select("id")
           .eq("session_id", sessionData.id);
-        //
-        if (!holesError && holes && holes.length === 0) {
+        if (!holesError && (!holes || holes.length === 0)) {
           await createHolesForSession(sessionData.id);
         }
-        // Check if putts exist for this player in this session
+        // Only create putts for the current user if none exist for this user in this session
         if (thisPlayer) {
           const { data: puttsRows, error: puttsError } = await supabase
             .from("putts")
-            .select("*")
+            .select("id")
             .eq("session_id", sessionData.id)
             .eq("player_id", thisPlayer.id);
-          //
-          if (!puttsError && puttsRows && puttsRows.length === 0) {
+          if (!puttsError && (!puttsRows || puttsRows.length === 0)) {
             await createPuttsForPlayer(sessionData.id, thisPlayer.id);
           }
         }
@@ -302,7 +330,7 @@ export default function Game() {
       // ---
     };
     fetchData();
-  }, [id]);
+  }, [id, currentHole]);
   // Handle join by code
   const handleJoinByCode = async () => {
     setJoinError("");
@@ -358,10 +386,35 @@ export default function Game() {
     window.location.href = `/game/${sessionData.id}`;
   };
 
-  // Placeholder: fetch putts and chip holder from DB (simulate real-time)
+  // Fetch all putts for all players for this session and populate local state
   useEffect(() => {
-    // TODO: subscribe to putts and chip events for real-time updates
-  }, [id]);
+    if (!session?.id || players.length === 0) return;
+    let isMounted = true;
+    async function fetchAllPutts() {
+      const { data: puttsRows, error } = await supabase
+        .from("putts")
+        .select("player_id, num_putts, hole_id, session_id, holes(number)")
+        .eq("session_id", session.id);
+      if (error) {
+        console.error("[PUTTS FETCH DEBUG] Error fetching putts", error);
+        return;
+      }
+      // Build { playerId: { [holeNumber]: num_putts } }
+      const puttsMap = {};
+      for (const row of puttsRows) {
+        const pid = row.player_id;
+        const holeNum = row.holes?.number;
+        if (!pid || !holeNum) continue;
+        if (!puttsMap[pid]) puttsMap[pid] = {};
+        puttsMap[pid][holeNum] = row.num_putts;
+      }
+      if (isMounted) setPutts(puttsMap);
+    }
+    fetchAllPutts();
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.id, players, currentHole]);
 
   // Handle putt input (host only)
   const handlePuttChange = (playerId, value) => {
@@ -373,12 +426,23 @@ export default function Game() {
 
   // Handle submit putts (host only)
   const handleSubmitPutts = async () => {
+    // Mark which players should animate their prev cell
+    const animatingPlayers = {};
+    players.forEach((p) => {
+      if (
+        putts[p.id]?.[currentHole] !== undefined &&
+        putts[p.id]?.[currentHole] !== ""
+      ) {
+        animatingPlayers[p.id] = true;
+      }
+    });
+    setAnimatePrev(animatingPlayers);
     // Find 3-putters (any putt 3 or above)
     const threePutters = players.filter(
-      (p) => Number(putts[p.user_id]?.[currentHole]) >= 3
+      (p) => Number(putts[p.id]?.[currentHole]) >= 3
     );
     if (threePutters.length === 1) {
-      setChipHolder(threePutters[0].user_id);
+      setChipHolder(threePutters[0].id);
     } else if (threePutters.length > 1) {
       setChipCandidates(threePutters);
       setShowChipModal(true);
@@ -394,7 +458,7 @@ export default function Game() {
       return;
     }
     for (const p of players) {
-      const value = putts[p.user_id]?.[currentHole];
+      const value = putts[p.id]?.[currentHole];
       if (value != null && value !== "") {
         // Find the hole_id for the currentHole
         const hole = holes.find((h) => h.number === currentHole);
@@ -406,14 +470,7 @@ export default function Game() {
           continue;
         }
         // Update the putts row for this player, session, and hole_id
-        console.log("[PUTT SUBMIT DEBUG] Attempting update", {
-          player: p,
-          value,
-          currentHole,
-          sessionId: session.id,
-          holeId: hole.id,
-        });
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from("putts")
           .update({ num_putts: Number(value) })
           .eq("session_id", session.id)
@@ -426,22 +483,10 @@ export default function Game() {
             currentHole,
             error,
           });
-        } else {
-          console.log("[PUTT SUBMIT DEBUG] Updated putt", {
-            player: p,
-            value,
-            currentHole,
-            data,
-          });
         }
-      } else {
-        console.log("[PUTT SUBMIT DEBUG] Skipped null/empty putt", {
-          player: p,
-          value,
-          currentHole,
-        });
       }
     }
+    setTimeout(() => setAnimatePrev({}), 600); // clear after animation
     setCurrentHole((h) => {
       const next = h + 1;
       window.localStorage.setItem(`currentHole_${id}`, next);
@@ -692,17 +737,14 @@ export default function Game() {
               ))}
             </select>
           </label>
-          {chipHolder && (
-            <span className="flex items-center gap-1 text-yellow-700 font-bold">
-              <ChipIcon />{" "}
-              {players.find((p) => p.user_id === chipHolder)?.name || ""}
-            </span>
-          )}
         </div>
         <table className="w-full text-center">
           <thead>
             <tr>
               <th className="py-2">Player</th>
+              {currentHole > 1 && (
+                <th className="py-2 text-gray-400">Hole {currentHole - 1}</th>
+              )}
               <th className="py-2">Putts</th>
             </tr>
           </thead>
@@ -718,7 +760,11 @@ export default function Game() {
                     (userId === p.user_id ? "text-green-900" : "text-green-800")
                   }
                 >
-                  {chipHolder === p.user_id && <ChipIcon className="w-4 h-4" />}{" "}
+                  {chipHolder === p.id && (
+                    <span className="flex items-center gap-1 text-yellow-700 font-bold">
+                      <ChipIcon className="w-4 h-4" />
+                    </span>
+                  )}
                   {p.name}
                   {userId === p.user_id && (
                     <span className="ml-1 text-xs text-green-500 font-bold">
@@ -726,23 +772,43 @@ export default function Game() {
                     </span>
                   )}
                 </td>
+                {currentHole > 1 && (
+                  <td className="py-2">
+                    <span
+                      className={`text-gray-400 transition-all duration-500 ${
+                        animatePrev[p.id] ? "slide-fade" : ""
+                      }`}
+                    >
+                      <PuttsDisplay
+                        playerId={p.id}
+                        currentHole={currentHole - 1}
+                        sessionId={session?.id}
+                      />
+                    </span>
+                  </td>
+                )}
                 <td className="py-2">
+                  {/* For host: always show input box, prefilled with value; for others: show DB value only */}
                   {isHost ? (
                     <input
                       type="number"
-                      min="1"
+                      min="0"
                       max="6"
-                      className="w-16 rounded px-2 py-1 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 text-center"
-                      value={putts[p.user_id]?.[currentHole] || ""}
-                      onChange={(e) =>
-                        handlePuttChange(p.user_id, e.target.value)
+                      className="w-16 rounded px-2 py-1 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400 text-center mt-1"
+                      value={
+                        putts[p.id]?.[currentHole] === 0
+                          ? 0
+                          : putts[p.id]?.[currentHole] ?? ""
                       }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        handlePuttChange(p.id, val === "" ? "" : Number(val));
+                      }}
                     />
                   ) : (
                     <PuttsDisplay
-                      playerId={p.user_id}
+                      playerId={p.id}
                       currentHole={currentHole}
-                      putts={putts}
                       sessionId={session?.id}
                     />
                   )}
