@@ -51,8 +51,6 @@ export default function Game() {
   const [showScorecard, setShowScorecard] = useState(false);
   const [showPotModal, setShowPotModal] = useState(false);
 
-  // --- Card DB logic: always fetch from DB, assign after putt submit ---
-  // Fetch cards for the current hole and update playerCards
   const fetchCardsForHole = React.useCallback(async () => {
     if (!session?.id || players.length === 0) return;
     setLoadingCards(true);
@@ -74,6 +72,142 @@ export default function Game() {
     setPlayerCards(grouped);
     setLoadingCards(false);
   }, [session?.id, players]);
+
+  // Fetch all putts for all players for this session and update state (used by realtime)
+  const fetchAllPuttsAndChip = React.useCallback(async () => {
+    if (!session?.id || players.length === 0) return;
+    // Fetch all putts
+    const { data: puttsRows, error } = await supabase
+      .from("putts")
+      .select("player_id, num_putts, hole_id, session_id, holes(number)")
+      .eq("session_id", session.id);
+    if (error) {
+      console.error("[PUTTS FETCH DEBUG] Error fetching putts", error);
+      return;
+    }
+    // Build { playerId: { [holeNumber]: num_putts } }
+    const puttsMap = {};
+    for (const row of puttsRows) {
+      const pid = row.player_id;
+      const holeNum = row.holes?.number;
+      if (!pid || !holeNum) continue;
+      if (!puttsMap[pid]) puttsMap[pid] = {};
+      puttsMap[pid][holeNum] = row.num_putts;
+    }
+    setPutts(puttsMap);
+
+    // CHIP LOGIC: Use chip_events as source of truth
+    // 1. Find the latest hole with a 3+ putt
+    let latestHole = 0;
+    players.forEach((p) => {
+      const playerPutts = puttsMap[p.id] || {};
+      Object.entries(playerPutts).forEach(([holeNumStr, numPutts]) => {
+        const holeNum = Number(holeNumStr);
+        if (holeNum > latestHole && Number(numPutts) >= 3) {
+          latestHole = holeNum;
+        }
+      });
+    });
+    // 2. Find all players with a 3+ on the latestHole
+    const chipCandidates = players.filter((p) => {
+      const playerPutts = puttsMap[p.id] || {};
+      return Number(playerPutts[latestHole]) >= 3;
+    });
+    // 3. Fetch latest chip_event for this session
+    const { data: chipEvents, error: chipEventsError } = await supabase
+      .from("chip_events")
+      .select("id, session_player_id, hole_number")
+      .eq("session_id", session.id)
+      .order("hole_number", { ascending: false })
+      .limit(1);
+    if (chipEventsError) {
+      console.error(
+        "[CHIP_EVENTS FETCH DEBUG] Error fetching chip_events",
+        chipEventsError
+      );
+      setChipHolder(null);
+      return;
+    }
+    const latestChipEvent =
+      chipEvents && chipEvents.length > 0 ? chipEvents[0] : null;
+    // 4. Decide chip holder and modal
+    if (latestChipEvent && latestChipEvent.hole_number >= latestHole) {
+      // There is already a chip event for this hole or a later one
+      setChipHolder(latestChipEvent.session_player_id);
+      setShowChipModal(false);
+    } else if (latestHole > 0 && chipCandidates.length === 1) {
+      // Only one candidate, assign chip
+      setChipHolder(chipCandidates[0].id);
+      // Insert chip_event
+      await supabase.from("chip_events").insert([
+        {
+          session_id: session.id,
+          session_player_id: chipCandidates[0].id,
+          hole_number: latestHole,
+        },
+      ]);
+      setShowChipModal(false);
+    } else if (latestHole > 0 && chipCandidates.length > 1) {
+      // Multiple candidates, show modal if not already resolved
+      setChipModalCandidates(chipCandidates);
+      setChipModalHole(latestHole);
+      setShowChipModal(true);
+    } else {
+      setChipHolder(null);
+      setShowChipModal(false);
+    }
+  }, [session?.id, players]);
+
+  // --- Supabase Realtime subscriptions ---
+  React.useEffect(() => {
+    if (!session?.id) return;
+    // Listen for changes to putts table for this session
+    const puttsChannel = supabase
+      .channel("putts-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "putts",
+          filter: `session_id=eq.${session.id}`,
+        },
+        () => {
+          // Re-fetch all putts and chip logic
+          fetchAllPuttsAndChip();
+        }
+      )
+      .subscribe();
+
+    // Listen for changes to cards table for this session
+    const cardsChannel = supabase
+      .channel("cards-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "cards",
+          filter: `session_id=eq.${session.id}`,
+        },
+        () => {
+          // Re-fetch all cards for session
+          fetchCardsForHole();
+        }
+      )
+      .subscribe();
+
+    // Cleanup on unmount
+    return () => {
+      supabase.removeChannel(puttsChannel);
+      supabase.removeChannel(cardsChannel);
+    };
+  }, [session?.id, fetchAllPuttsAndChip, fetchCardsForHole]);
+
+  // Fetch all putts for all players for this session and update state (used by realtime)
+
+  // --- Card DB logic: always fetch from DB, assign after putt submit ---
+  // Fetch cards for the current hole and update playerCards
 
   // Assign cards for the current hole based on putts
   const assignCardsForHole = async (holeNumber) => {
@@ -459,98 +593,6 @@ export default function Game() {
     fetchData();
   }, [id, currentHole]);
   // Handle join by code
-
-  // Fetch all putts for all players for this session and populate local state
-  useEffect(() => {
-    if (!session?.id || players.length === 0) return;
-    let isMounted = true;
-    async function fetchAllPuttsAndChip() {
-      // Fetch all putts
-      const { data: puttsRows, error } = await supabase
-        .from("putts")
-        .select("player_id, num_putts, hole_id, session_id, holes(number)")
-        .eq("session_id", session.id);
-      if (error) {
-        console.error("[PUTTS FETCH DEBUG] Error fetching putts", error);
-        return;
-      }
-      // Build { playerId: { [holeNumber]: num_putts } }
-      const puttsMap = {};
-      for (const row of puttsRows) {
-        const pid = row.player_id;
-        const holeNum = row.holes?.number;
-        if (!pid || !holeNum) continue;
-        if (!puttsMap[pid]) puttsMap[pid] = {};
-        puttsMap[pid][holeNum] = row.num_putts;
-      }
-      if (isMounted) setPutts(puttsMap);
-
-      // CHIP LOGIC: Use chip_events as source of truth
-      // 1. Find the latest hole with a 3+ putt
-      let latestHole = 0;
-      players.forEach((p) => {
-        const playerPutts = puttsMap[p.id] || {};
-        Object.entries(playerPutts).forEach(([holeNumStr, numPutts]) => {
-          const holeNum = Number(holeNumStr);
-          if (holeNum > latestHole && Number(numPutts) >= 3) {
-            latestHole = holeNum;
-          }
-        });
-      });
-      // 2. Find all players with a 3+ on the latestHole
-      const chipCandidates = players.filter((p) => {
-        const playerPutts = puttsMap[p.id] || {};
-        return Number(playerPutts[latestHole]) >= 3;
-      });
-      // 3. Fetch latest chip_event for this session
-      const { data: chipEvents, error: chipEventsError } = await supabase
-        .from("chip_events")
-        .select("id, session_player_id, hole_number")
-        .eq("session_id", session.id)
-        .order("hole_number", { ascending: false })
-        .limit(1);
-      if (chipEventsError) {
-        console.error(
-          "[CHIP_EVENTS FETCH DEBUG] Error fetching chip_events",
-          chipEventsError
-        );
-        setChipHolder(null);
-        return;
-      }
-      const latestChipEvent =
-        chipEvents && chipEvents.length > 0 ? chipEvents[0] : null;
-      // 4. Decide chip holder and modal
-      if (latestChipEvent && latestChipEvent.hole_number >= latestHole) {
-        // There is already a chip event for this hole or a later one
-        setChipHolder(latestChipEvent.session_player_id);
-        setShowChipModal(false);
-      } else if (latestHole > 0 && chipCandidates.length === 1) {
-        // Only one candidate, assign chip
-        setChipHolder(chipCandidates[0].id);
-        // Insert chip_event
-        await supabase.from("chip_events").insert([
-          {
-            session_id: session.id,
-            session_player_id: chipCandidates[0].id,
-            hole_number: latestHole,
-          },
-        ]);
-        setShowChipModal(false);
-      } else if (latestHole > 0 && chipCandidates.length > 1) {
-        // Multiple candidates, show modal if not already resolved
-        setChipModalCandidates(chipCandidates);
-        setChipModalHole(latestHole);
-        setShowChipModal(true);
-      } else {
-        setChipHolder(null);
-        setShowChipModal(false);
-      }
-    }
-    fetchAllPuttsAndChip();
-    return () => {
-      isMounted = false;
-    };
-  }, [session?.id, players, currentHole]);
 
   // Handle putt input (host only)
 
