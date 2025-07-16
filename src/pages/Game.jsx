@@ -53,46 +53,19 @@ export default function Game() {
 
   // --- Card DB logic: always fetch from DB, assign after putt submit ---
   // Fetch cards for the current hole and update playerCards
-  const fetchCardsForHole = async (holeNumber) => {
-    if (!session?.id || players.length === 0 || !holeNumber) return;
+  const fetchCardsForHole = React.useCallback(async () => {
+    if (!session?.id || players.length === 0) return;
     setLoadingCards(true);
-    const { data: holes, error: holesError } = await supabase
-      .from("holes")
-      .select("id, number")
-      .eq("session_id", session.id);
-    if (holesError) {
-      setLoadingCards(false);
-      return;
-    }
-    const hole = holes.find((h) => h.number === holeNumber);
-    if (!hole) {
-      setLoadingCards(false);
-      return;
-    }
-    // Log and validate IDs before querying cards
-    console.log("[Cards Query] session.id:", session?.id, "hole.id:", hole?.id);
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (
-      !session?.id ||
-      !hole?.id ||
-      session.id === "" ||
-      hole.id === "" ||
-      !uuidRegex.test(session.id) ||
-      !uuidRegex.test(hole.id)
-    ) {
-      console.warn("[Cards Query] Invalid session.id or hole.id", {
-        sessionId: session?.id,
-        holeId: hole?.id,
-      });
-      setLoadingCards(false);
-      return;
-    }
-    const { data: cards } = await supabase
+    // Fetch all cards for this session
+    const { data: cards, error } = await supabase
       .from("cards")
       .select("id, session_player_id, suit, rank, is_hidden, hole_id")
-      .eq("session_id", session.id)
-      .eq("hole_id", hole.id);
+      .eq("session_id", session.id);
+    if (error) {
+      setLoadingCards(false);
+      return;
+    }
+    // Group by player
     const grouped = {};
     for (const row of cards) {
       if (!grouped[row.session_player_id]) grouped[row.session_player_id] = [];
@@ -100,7 +73,7 @@ export default function Game() {
     }
     setPlayerCards(grouped);
     setLoadingCards(false);
-  };
+  }, [session?.id, players]);
 
   // Assign cards for the current hole based on putts
   const assignCardsForHole = async (holeNumber) => {
@@ -235,45 +208,11 @@ export default function Game() {
   // Only fetch cards for the current hole and update playerCards (do NOT assign cards here)
   useEffect(() => {
     if (!session?.id || players.length === 0 || !currentHole) return;
-    let isMounted = true;
-    async function fetchCardsOnly() {
-      setLoadingCards(true);
-      const { data: holes, error: holesError } = await supabase
-        .from("holes")
-        .select("id, number")
-        .eq("session_id", session.id);
-      if (holesError) {
-        setLoadingCards(false);
-        return;
-      }
-      const hole = holes.find((h) => h.number === currentHole);
-      if (!hole) {
-        setLoadingCards(false);
-        return;
-      }
-      const { data: cardsRows, error } = await supabase
-        .from("cards")
-        .select("id, session_player_id, suit, rank, is_hidden, hole_id")
-        .eq("session_id", session.id)
-        .eq("hole_id", hole.id);
-      if (error) {
-        setLoadingCards(false);
-        return;
-      }
-      const grouped = {};
-      for (const row of cardsRows) {
-        if (!grouped[row.session_player_id])
-          grouped[row.session_player_id] = [];
-        grouped[row.session_player_id].push(row);
-      }
-      if (isMounted) setPlayerCards(grouped);
-      setLoadingCards(false);
+    async function fetchCardsOnMount() {
+      await fetchCardsForHole(currentHole);
     }
-    fetchCardsOnly();
-    return () => {
-      isMounted = false;
-    };
-  }, [session?.id, players, currentHole]);
+    fetchCardsOnMount();
+  }, [session?.id, players, currentHole, fetchCardsForHole]);
 
   // Calculate payouts for each player
   function getPayouts() {
@@ -867,6 +806,14 @@ export default function Game() {
       "players:",
       players.map((p) => p.id)
     );
+    // Your putt submission logic here (if any)
+    // After submitting putts, automatically advance to the next hole
+    if (currentHole < 18) {
+      setCurrentHole(currentHole + 1);
+      window.localStorage.setItem(`currentHole_${id}`, currentHole + 1);
+    }
+    // Optionally, you can show a message if it's the last hole
+    // else { alert('All holes complete!'); }
     // Mark which players should animate their prev cell
     const animatingPlayers = {};
     players.forEach((p) => {
@@ -1432,6 +1379,7 @@ export default function Game() {
                   </div>
                 ) : (
                   (() => {
+                    // Always use playerCards[p.id] for this player
                     const cards = playerCards[p.id] || [];
                     const rows = [];
                     for (let r = 0; r < Math.ceil(cards.length / 7); r++) {
