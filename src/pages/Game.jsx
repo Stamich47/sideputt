@@ -1,235 +1,294 @@
-// Friendlier React Icons for scorecard
-import { FaStar, FaSmile, FaFrown } from "react-icons/fa";
+import React, { useState, useEffect } from "react";
+import {
+  CurrencyDollarIcon,
+  ThreePuttIcon,
+  CardsIcon,
+} from "../components/Icons";
 
-// Star icon for 0-putt
-function StarIcon({ className = "w-5 h-5 text-yellow-400" }) {
-  return <FaStar className={className} />;
-}
-
-// Smile icon for 1-putt
-function SmileIcon({ className = "w-5 h-5 text-green-500" }) {
-  return <FaSmile className={className} />;
-}
-
-// Frown icon for 3+ putts
-function FrownIcon({ className = "w-5 h-5 text-red-400" }) {
-  return <FaFrown className={className} />;
-}
-
-// Dollar bill SVG icon (red for 3+ putts)
-function DollarBillIcon({ className = "w-4 h-4", color = "#dc2626" }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 20 14"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect
-        x="1"
-        y="1"
-        width="18"
-        height="12"
-        rx="2"
-        fill="#fee2e2"
-        stroke={color}
-        strokeWidth="1.5"
-      />
-      <circle
-        cx="10"
-        cy="7"
-        r="3"
-        fill="#fff1f2"
-        stroke={color}
-        strokeWidth="1"
-      />
-      <text
-        x="10"
-        y="9.5"
-        textAnchor="middle"
-        fontSize="6"
-        fontWeight="bold"
-        fill={color}
-      >
-        $
-      </text>
-    </svg>
-  );
-}
-// Golden animated 0 icon for 0-putts in scorecard
-function CasinoZeroIcon({
-  className = "w-6 h-6",
-  color = "#eab308",
-  animate = false,
-}) {
-  // Just a big, bold, glowing golden 0 (no coin/ellipse)
-  return (
-    <span className={animate ? "inline-block animate-bounce" : "inline-block"}>
-      <svg
-        className={className}
-        viewBox="0 0 32 32"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <text
-          x="16"
-          y="24"
-          textAnchor="middle"
-          fontSize="24"
-          fontWeight="bold"
-          fill={color}
-          style={{
-            filter: animate ? "drop-shadow(0 0 8px #facc15)" : "none",
-            fontFamily: "monospace, sans-serif",
-            letterSpacing: "2px",
-          }}
-        >
-          0
-        </text>
-      </svg>
-    </span>
-  );
-}
-// Utility functions for holes/putts creation
-import React, { useEffect, useState } from "react";
-import { CurrencyDollarIcon, SparklesIcon } from "@heroicons/react/24/outline";
-
-// Custom SVG Casino Chip Icon
-function CasinoChipIcon({ className = "w-4 h-4", color = "#eab308" }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        stroke={color}
-        strokeWidth="2"
-        fill="#fffbe6"
-      />
-      <circle
-        cx="12"
-        cy="12"
-        r="5"
-        stroke={color}
-        strokeWidth="2"
-        fill="#fde68a"
-      />
-      <g stroke={color} strokeWidth="1.5">
-        <line x1="12" y1="2" x2="12" y2="5" />
-        <line x1="12" y1="19" x2="12" y2="22" />
-        <line x1="2" y1="12" x2="5" y2="12" />
-        <line x1="19" y1="12" x2="22" y2="12" />
-        <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" />
-        <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" />
-        <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" />
-        <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" />
-      </g>
-    </svg>
-  );
-}
-// ...existing imports...
+import {
+  StarIcon,
+  SmileIcon,
+  FrownIcon,
+  DollarBillIcon,
+  CasinoZeroIcon,
+  CasinoChipIcon,
+} from "../components/Icons";
+import { PuttsDisplay, CardPlaceholder } from "../components/GameWidgets";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import {
   createHolesForSession,
   createPuttsForPlayer,
 } from "../lib/supabaseGameUtils";
+import { PokerCard } from "../components/PokerCard";
 
-// Show the putts for a player for the selected hole (non-hosts)
-function PuttsDisplay({ playerId, currentHole, sessionId }) {
-  const [value, setValue] = useState(null);
+export default function Game() {
+  // --- All useState hooks at the very top ---
+  const { id } = useParams();
+  const [session, setSession] = useState(null);
+  const [players, setPlayers] = useState([]);
+  const [playerCards, setPlayerCards] = useState({});
+  const [loadingCards, setLoadingCards] = useState(false);
+  const [putts, setPutts] = useState({}); // { playerId: [puttsPerHole] }
+  // Persist currentHole in localStorage by session id
+  const [currentHole, setCurrentHole] = useState(() => {
+    const saved = window.localStorage.getItem(`currentHole_${id}`);
+    return saved ? Number(saved) : 1;
+  });
+  const [showInviteCode, setShowInviteCode] = useState(false);
+  const [chipHolder, setChipHolder] = useState(null); // session_player_id
+  const [showChipModal, setShowChipModal] = useState(false);
+  const [chipModalCandidates, setChipModalCandidates] = useState([]);
+  const [chipModalHole, setChipModalHole] = useState(null);
+  const [isHost, setIsHost] = useState(false);
+  const [showGameDetails, setShowGameDetails] = useState(false);
+  const [puttsModalPlayer] = useState(null); // restored for modal usage
+  const [puttsModalData] = useState([]); // restored for modal usage
+  const [showPuttsModal, setShowPuttsModal] = useState(false);
+  const [userId, setUserId] = useState(null);
+  // Add missing state hooks
+  const [animatePrev, setAnimatePrev] = useState({});
+  const [showScorecard, setShowScorecard] = useState(false);
+  const [showPotModal, setShowPotModal] = useState(false);
 
-  useEffect(() => {
-    if (!sessionId || !playerId || !currentHole) {
-      setValue(null);
+  // --- Card DB logic: always fetch from DB, assign after putt submit ---
+  // Fetch cards for the current hole and update playerCards
+  const fetchCardsForHole = async (holeNumber) => {
+    if (!session?.id || players.length === 0 || !holeNumber) return;
+    setLoadingCards(true);
+    const { data: holes, error: holesError } = await supabase
+      .from("holes")
+      .select("id, number")
+      .eq("session_id", session.id);
+    if (holesError) {
+      setLoadingCards(false);
       return;
     }
+    const hole = holes.find((h) => h.number === holeNumber);
+    if (!hole) {
+      setLoadingCards(false);
+      return;
+    }
+    // Log and validate IDs before querying cards
+    console.log("[Cards Query] session.id:", session?.id, "hole.id:", hole?.id);
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (
+      !session?.id ||
+      !hole?.id ||
+      session.id === "" ||
+      hole.id === "" ||
+      !uuidRegex.test(session.id) ||
+      !uuidRegex.test(hole.id)
+    ) {
+      console.warn("[Cards Query] Invalid session.id or hole.id", {
+        sessionId: session?.id,
+        holeId: hole?.id,
+      });
+      setLoadingCards(false);
+      return;
+    }
+    const { data: cards } = await supabase
+      .from("cards")
+      .select("id, session_player_id, suit, rank, is_hidden, hole_id")
+      .eq("session_id", session.id)
+      .eq("hole_id", hole.id);
+    const grouped = {};
+    for (const row of cards) {
+      if (!grouped[row.session_player_id]) grouped[row.session_player_id] = [];
+      grouped[row.session_player_id].push(row);
+    }
+    setPlayerCards(grouped);
+    setLoadingCards(false);
+  };
+
+  // Assign cards for the current hole based on putts
+  const assignCardsForHole = async (holeNumber) => {
+    console.log(
+      "[assignCardsForHole] called for holeNumber:",
+      holeNumber,
+      "session:",
+      session?.id,
+      "players:",
+      players.map((p) => p.id)
+    );
+    if (!session?.id || players.length === 0 || !holeNumber) {
+      console.warn(
+        "[assignCardsForHole] Missing session, players, or holeNumber",
+        { sessionId: session?.id, players, holeNumber }
+      );
+      return;
+    }
+    const { data: holes, error: holesError } = await supabase
+      .from("holes")
+      .select("id, number")
+      .eq("session_id", session.id);
+    if (holesError) {
+      console.error("[assignCardsForHole] Error fetching holes:", holesError);
+      return;
+    }
+    const hole = holes.find((h) => h.number === holeNumber);
+    if (!hole) {
+      console.warn("[assignCardsForHole] No hole found for number", holeNumber);
+      return;
+    }
+    for (const p of players) {
+      const numPutts = putts[p.id]?.[holeNumber];
+      let numCards = 0;
+      if (Number(numPutts) === 1) numCards = 1;
+      else if (Number(numPutts) === 0) numCards = 2;
+      console.log(
+        `[assignCardsForHole] Player ${p.id} putts:`,
+        numPutts,
+        "numCards:",
+        numCards
+      );
+      // Fetch existing cards for this player/hole
+      const { data: existingCards } = await supabase
+        .from("cards")
+        .select("id, suit, rank")
+        .eq("session_id", session.id)
+        .eq("hole_id", hole.id)
+        .eq("session_player_id", p.id);
+      console.log(
+        `[assignCardsForHole] Player ${p.id} existingCards:`,
+        existingCards
+      );
+      // Delete if too many
+      if (existingCards && existingCards.length > numCards) {
+        const toDelete = existingCards.slice(numCards).map((c) => c.id);
+        if (toDelete.length > 0) {
+          console.log(
+            `[assignCardsForHole] Deleting extra cards for player ${p.id}:`,
+            toDelete
+          );
+          await supabase.from("cards").delete().in("id", toDelete);
+        }
+      }
+      // Insert if too few
+      if (existingCards && existingCards.length < numCards) {
+        const deck = createDeck();
+        // Remove used cards for this hole
+        const { data: usedCards } = await supabase
+          .from("cards")
+          .select("suit, rank")
+          .eq("session_id", session.id)
+          .eq("hole_id", hole.id);
+        const usedSet = new Set(usedCards.map((c) => `${c.suit}-${c.rank}`));
+        const available = deck.filter(
+          (c) => !usedSet.has(`${c.suit}-${c.rank}`)
+        );
+        const newCards = dealRandomCards(
+          available,
+          numCards - existingCards.length,
+          true
+        );
+        for (const c of newCards) {
+          console.log(
+            `[assignCardsForHole] Inserting card for player ${p.id}:`,
+            c
+          );
+          await supabase.from("cards").insert({
+            session_id: session.id,
+            session_player_id: p.id,
+            hole_id: hole.id,
+            suit: c.suit,
+            rank: c.rank,
+            is_hidden: c.is_hidden,
+          });
+        }
+      }
+    }
+    console.log("[assignCardsForHole] Complete for holeNumber:", holeNumber);
+  };
+
+  // ...existing code...
+
+  // Helper: get number of cards to deal for a player (example: based on putts)
+
+  // Helper: deal random cards (returns [{suit, rank, is_hidden}...])
+  function dealRandomCards(deck, n, isHidden = true) {
+    // Simple shuffle
+    const shuffled = [...deck].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, n).map((c) => ({ ...c, is_hidden: isHidden }));
+  }
+
+  // Card suits and ranks
+  const SUITS = React.useMemo(
+    () => ["hearts", "diamonds", "clubs", "spades"],
+    []
+  );
+  const RANKS = React.useMemo(
+    () => ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"],
+    []
+  );
+  const createDeck = React.useCallback(() => {
+    const deck = [];
+    for (const suit of SUITS) {
+      for (const rank of RANKS) {
+        deck.push({ suit, rank });
+      }
+    }
+    return deck;
+  }, [RANKS, SUITS]);
+
+  // Only fetch cards for the current hole and update playerCards (do NOT assign cards here)
+  useEffect(() => {
+    if (!session?.id || players.length === 0 || !currentHole) return;
     let isMounted = true;
-    async function fetchPutt() {
+    async function fetchCardsOnly() {
+      setLoadingCards(true);
       const { data: holes, error: holesError } = await supabase
         .from("holes")
         .select("id, number")
-        .eq("session_id", sessionId);
+        .eq("session_id", session.id);
       if (holesError) {
-        if (isMounted) setValue(null);
+        setLoadingCards(false);
         return;
       }
       const hole = holes.find((h) => h.number === currentHole);
       if (!hole) {
-        if (isMounted) setValue(null);
+        setLoadingCards(false);
         return;
       }
-      const { data: puttRows, error: puttError } = await supabase
-        .from("putts")
-        .select("num_putts, player_id, session_id, hole_id")
-        .eq("session_id", sessionId)
-        .eq("player_id", playerId)
+      const { data: cardsRows, error } = await supabase
+        .from("cards")
+        .select("id, session_player_id, suit, rank, is_hidden, hole_id")
+        .eq("session_id", session.id)
         .eq("hole_id", hole.id);
-      if (puttError) {
-        if (isMounted) setValue(null);
+      if (error) {
+        setLoadingCards(false);
         return;
       }
-      if (puttRows && puttRows.length > 0) {
-        if (isMounted) setValue(puttRows[0].num_putts);
-      } else {
-        if (isMounted) setValue(null);
+      const grouped = {};
+      for (const row of cardsRows) {
+        if (!grouped[row.session_player_id])
+          grouped[row.session_player_id] = [];
+        grouped[row.session_player_id].push(row);
       }
+      if (isMounted) setPlayerCards(grouped);
+      setLoadingCards(false);
     }
-    fetchPutt();
+    fetchCardsOnly();
     return () => {
       isMounted = false;
     };
-  }, [playerId, currentHole, sessionId]);
+  }, [session?.id, players, currentHole]);
 
-  return (
-    <span>
-      {value === null || value === "" || typeof value === "undefined" ? (
-        <span className="text-gray-400">-</span>
-      ) : value === 0 ? (
-        0
-      ) : (
-        value
-      )}
-    </span>
-  );
-}
-
-// Placeholder poker card
-const CardPlaceholder = () => (
-  <div className="w-10 h-14 bg-gray-200 rounded-lg border border-gray-400 flex items-center justify-center text-lg font-bold text-gray-500">
-    🂠
-  </div>
-);
-
-export default function Game() {
-  // Animation state for prev hole putts
-  const [animatePrev, setAnimatePrev] = useState({});
-  // --- Scorecard Modal State ---
-  const [showScorecard, setShowScorecard] = useState(false);
-  // --- Live Payouts Modal State ---
-  const [showPotModal, setShowPotModal] = useState(false);
-  // Calculate payouts for each player (must be before return and outside JSX)
+  // Calculate payouts for each player
   function getPayouts() {
-    if (!session || players.length === 0) return [];
-    const payouts = players.map(function (p) {
-      let total = 0;
-      // Buy-in
-      total += Number(session.buy_in_amount) || 0;
-      // 3-putt penalties
-      const playerPutts = putts[p.id] || {};
+    const payouts = players.map((p) => {
+      let total = Number(session?.buy_in_amount) || 0;
+      // Count 3-putts
       let threePuttCount = 0;
-      Object.values(playerPutts).forEach(function (numPutts) {
+      const playerPutts = putts[p.id] || {};
+      Object.values(playerPutts).forEach((numPutts) => {
         if (Number(numPutts) >= 3) threePuttCount++;
       });
-      total += threePuttCount * (Number(session.three_putt_value) || 0);
+      total += threePuttCount * (Number(session?.three_putt_value) || 0);
       // Chip value (if currently holding chip)
-      if (chipHolder === p.id && session.three_putt_chip_enabled) {
-        total += Number(session.three_putt_chip_value) || 0;
+      if (chipHolder === p.id && session?.three_putt_chip_enabled) {
+        total += Number(session?.three_putt_chip_value) || 0;
       }
       return {
         id: p.id,
@@ -273,64 +332,7 @@ export default function Game() {
       document.head.appendChild(style);
     }
   }, []);
-  const { id } = useParams();
-  const [session, setSession] = useState(null);
-  const [players, setPlayers] = useState([]);
-  const [putts, setPutts] = useState({}); // { playerId: [puttsPerHole] }
-  // Persist currentHole in localStorage by session id
-  const [currentHole, setCurrentHole] = useState(() => {
-    const saved = window.localStorage.getItem(`currentHole_${id}`);
-    return saved ? Number(saved) : 1;
-  });
-  // Invite code modal
-  const [showInviteCode, setShowInviteCode] = useState(false);
-  const [chipHolder, setChipHolder] = useState(null); // playerId
-  const [showChipModal, setShowChipModal] = useState(false);
-  const [isHost, setIsHost] = useState(false);
-  const [userId, setUserId] = useState(null);
-  // Modal for viewing putts history
-  const [showPuttsModal, setShowPuttsModal] = useState(false);
-  const [puttsModalPlayer, setPuttsModalPlayer] = useState(null);
-  const [puttsModalData, setPuttsModalData] = useState([]); // Array of 18 putts
-  // Modal for game details
-  const [showGameDetails, setShowGameDetails] = useState(false);
-  // Open modal to view putts for a player
-  const handleViewPutts = async (player) => {
-    setPuttsModalPlayer(player);
-    // Always use player.id (session_players.id)
-    const playerId = player.id;
-    if (!playerId || !session?.id) {
-      setPuttsModalData(Array(18).fill(null));
-      setShowPuttsModal(true);
-      return;
-    }
-    // Query only this session and player, join holes for number, order by holes.number
-    const { data: puttsRows, error } = await supabase
-      .from("putts")
-      .select("hole_id, num_putts, player_id, session_id, holes(number)")
-      .eq("session_id", session.id)
-      .eq("player_id", playerId)
-      .order("hole_id");
-    if (!error && puttsRows) {
-      // Sort by holes.number in JS to ensure correct order
-      const sortedRows = [...puttsRows].sort((a, b) => {
-        const nA = a.holes?.number ?? 0;
-        const nB = b.holes?.number ?? 0;
-        return nA - nB;
-      });
-      const arr = Array(18).fill(null);
-      sortedRows.forEach((row) => {
-        const holeNumber = row.holes?.number;
-        if (holeNumber >= 1 && holeNumber <= 18) {
-          arr[holeNumber - 1] = row.num_putts;
-        }
-      });
-      setPuttsModalData(arr);
-    } else {
-      setPuttsModalData(Array(18).fill(null));
-    }
-    setShowPuttsModal(true);
-  };
+  // (handleViewPutts removed - unused function)
 
   // --- State for modals ---
   const [showEndModal, setShowEndModal] = useState(false);
@@ -369,6 +371,253 @@ export default function Game() {
     alert("Game deleted.");
     window.location.href = "/";
   };
+
+  // Fetch session, players, and user info
+  useEffect(() => {
+    // Restore currentHole from localStorage if present (in case id changes)
+    const saved = window.localStorage.getItem(`currentHole_${id}`);
+    if (saved && Number(saved) !== currentHole) {
+      setCurrentHole(Number(saved));
+    }
+    const fetchData = async () => {
+      const user = await supabase.auth.getUser();
+      const currentUserId = user.data?.user?.id;
+      setUserId(currentUserId);
+      // Session
+      const { data: sessionData, error: sessionError } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (sessionError) {
+        console.error("Supabase session fetch error:", sessionError);
+      }
+      setSession(sessionData);
+      // Players
+      let { data: playerData, error: playerError } = await supabase
+        .from("session_players")
+        .select("*")
+        .eq("session_id", id);
+      if (playerError) {
+        console.error("Supabase session_players fetch error:", playerError);
+      }
+      // Only insert user if not present and not immediately after game creation
+      let thisPlayer = playerData?.find((p) => p.user_id === currentUserId);
+      if (currentUserId && sessionData && playerData && !thisPlayer) {
+        // Insert host into session_players if missing (host on first load)
+        const name =
+          user.data?.user?.user_metadata?.full_name ||
+          user.data?.user?.email ||
+          "Player";
+        const { data: insertData, error: insertError } = await supabase
+          .from("session_players")
+          .insert([
+            {
+              session_id: sessionData.id,
+              user_id: currentUserId,
+              name,
+              is_creator: true,
+            },
+          ])
+          .select();
+        if (!insertError && insertData && insertData.length > 0) {
+          thisPlayer = insertData[0];
+          playerData.push(thisPlayer);
+        } else if (!insertError) {
+          // Fallback: fetch the row if duplicate
+          const { data: existingPlayer } = await supabase
+            .from("session_players")
+            .select("*")
+            .eq("session_id", sessionData.id)
+            .eq("user_id", currentUserId)
+            .single();
+          if (existingPlayer) {
+            thisPlayer = existingPlayer;
+            playerData.push(thisPlayer);
+          }
+        }
+        setShowJoinModal(false);
+      } else if (
+        currentUserId &&
+        sessionData &&
+        playerData &&
+        !playerData.some((p) => p.user_id === currentUserId)
+      ) {
+        setShowJoinModal(true);
+      }
+      // Ensure each player has an id property (session_players.id)
+      const normalizedPlayers = (playerData || []).map((p) => ({
+        ...p,
+        id: p.id || p.session_player_id || p.player_id,
+      }));
+      setPlayers(normalizedPlayers);
+      // Host check
+      if (sessionData && currentUserId === sessionData.creator_id)
+        setIsHost(true);
+
+      // ---
+      // Backend logic: ensure holes and putts exist for this session/player
+      if (sessionData) {
+        // Only create holes if none exist for this session
+        const { data: holes, error: holesError } = await supabase
+          .from("holes")
+          .select("id")
+          .eq("session_id", sessionData.id);
+        if (!holesError && (!holes || holes.length === 0)) {
+          await createHolesForSession(sessionData.id);
+        }
+        // Only create putts for the current user if none exist for this user in this session
+        if (thisPlayer) {
+          const { data: puttsRows, error: puttsError } = await supabase
+            .from("putts")
+            .select("id")
+            .eq("session_id", sessionData.id)
+            .eq("player_id", thisPlayer.id);
+          if (!puttsError && (!puttsRows || puttsRows.length === 0)) {
+            await createPuttsForPlayer(sessionData.id, thisPlayer.id);
+          }
+        }
+        // --- CHIP HOLDER: always compute from latest putts data ---
+        if (sessionData.three_putt_chip_enabled) {
+          // Fetch all putts for this session
+          const { data: allPutts, error: allPuttsError } = await supabase
+            .from("putts")
+            .select("player_id, num_putts, hole_id, session_id, holes(number)")
+            .eq("session_id", sessionData.id);
+          if (allPuttsError) {
+            console.error(
+              "[CHIP HOLDER DEBUG] Error fetching all putts for chip logic",
+              allPuttsError
+            );
+            setChipHolder(null);
+          } else {
+            // Find the highest hole number with a 3+ putt
+            let latestHole = 0;
+            let candidates = [];
+            for (const row of allPutts) {
+              const holeNum = row.holes?.number;
+              if (holeNum && Number(row.num_putts) >= 3) {
+                if (holeNum > latestHole) {
+                  latestHole = holeNum;
+                  candidates = [row.player_id];
+                } else if (holeNum === latestHole) {
+                  candidates.push(row.player_id);
+                }
+              }
+            }
+            if (latestHole > 0 && candidates.length === 1) {
+              setChipHolder(candidates[0]);
+            } else {
+              setChipHolder(null);
+            }
+          }
+        } else {
+          setChipHolder(null);
+        }
+      }
+      // ---
+    };
+    fetchData();
+  }, [id, currentHole]);
+  // Handle join by code
+
+  // Fetch all putts for all players for this session and populate local state
+  useEffect(() => {
+    if (!session?.id || players.length === 0) return;
+    let isMounted = true;
+    async function fetchAllPuttsAndChip() {
+      // Fetch all putts
+      const { data: puttsRows, error } = await supabase
+        .from("putts")
+        .select("player_id, num_putts, hole_id, session_id, holes(number)")
+        .eq("session_id", session.id);
+      if (error) {
+        console.error("[PUTTS FETCH DEBUG] Error fetching putts", error);
+        return;
+      }
+      // Build { playerId: { [holeNumber]: num_putts } }
+      const puttsMap = {};
+      for (const row of puttsRows) {
+        const pid = row.player_id;
+        const holeNum = row.holes?.number;
+        if (!pid || !holeNum) continue;
+        if (!puttsMap[pid]) puttsMap[pid] = {};
+        puttsMap[pid][holeNum] = row.num_putts;
+      }
+      if (isMounted) setPutts(puttsMap);
+
+      // CHIP LOGIC: Use chip_events as source of truth
+      // 1. Find the latest hole with a 3+ putt
+      let latestHole = 0;
+      players.forEach((p) => {
+        const playerPutts = puttsMap[p.id] || {};
+        Object.entries(playerPutts).forEach(([holeNumStr, numPutts]) => {
+          const holeNum = Number(holeNumStr);
+          if (holeNum > latestHole && Number(numPutts) >= 3) {
+            latestHole = holeNum;
+          }
+        });
+      });
+      // 2. Find all players with a 3+ on the latestHole
+      const chipCandidates = players.filter((p) => {
+        const playerPutts = puttsMap[p.id] || {};
+        return Number(playerPutts[latestHole]) >= 3;
+      });
+      // 3. Fetch latest chip_event for this session
+      const { data: chipEvents, error: chipEventsError } = await supabase
+        .from("chip_events")
+        .select("id, session_player_id, hole_number")
+        .eq("session_id", session.id)
+        .order("hole_number", { ascending: false })
+        .limit(1);
+      if (chipEventsError) {
+        console.error(
+          "[CHIP_EVENTS FETCH DEBUG] Error fetching chip_events",
+          chipEventsError
+        );
+        setChipHolder(null);
+        return;
+      }
+      const latestChipEvent =
+        chipEvents && chipEvents.length > 0 ? chipEvents[0] : null;
+      // 4. Decide chip holder and modal
+      if (latestChipEvent && latestChipEvent.hole_number >= latestHole) {
+        // There is already a chip event for this hole or a later one
+        setChipHolder(latestChipEvent.session_player_id);
+        setShowChipModal(false);
+      } else if (latestHole > 0 && chipCandidates.length === 1) {
+        // Only one candidate, assign chip
+        setChipHolder(chipCandidates[0].id);
+        // Insert chip_event
+        await supabase.from("chip_events").insert([
+          {
+            session_id: session.id,
+            session_player_id: chipCandidates[0].id,
+            hole_number: latestHole,
+          },
+        ]);
+        setShowChipModal(false);
+      } else if (latestHole > 0 && chipCandidates.length > 1) {
+        // Multiple candidates, show modal if not already resolved
+        setChipModalCandidates(chipCandidates);
+        setChipModalHole(latestHole);
+        setShowChipModal(true);
+      } else {
+        setChipHolder(null);
+        setShowChipModal(false);
+      }
+    }
+    fetchAllPuttsAndChip();
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.id, players, currentHole]);
+
+  // Handle putt input (host only)
+
+  // Handle submit putts (host only)
+
+  // Handle chip assignment if multiple 3-putters
 
   // Fetch session, players, and user info
   useEffect(() => {
@@ -612,6 +861,12 @@ export default function Game() {
 
   // Handle submit putts (host only)
   const handleSubmitPutts = async () => {
+    console.log(
+      "[handleSubmitPutts] called for currentHole:",
+      currentHole,
+      "players:",
+      players.map((p) => p.id)
+    );
     // Mark which players should animate their prev cell
     const animatingPlayers = {};
     players.forEach((p) => {
@@ -625,111 +880,58 @@ export default function Game() {
     setAnimatePrev(animatingPlayers);
 
     // Save putts to DB for each player for this hole
-    // Need to find the correct hole_id for the currentHole
     const { data: holes, error: holesError } = await supabase
       .from("holes")
       .select("id, number")
       .eq("session_id", session.id);
     if (holesError) {
-      console.error("[PUTT SUBMIT DEBUG] Error fetching holes", holesError);
+      console.error("[handleSubmitPutts] Error fetching holes:", holesError);
+      return;
+    }
+    const hole = holes.find((h) => h.number === currentHole);
+    if (!hole) {
+      console.warn("[handleSubmitPutts] No hole found for number", currentHole);
       return;
     }
     for (const p of players) {
-      const value = putts[p.id]?.[currentHole];
-      if (value != null && value !== "") {
-        // Find the hole_id for the currentHole
-        const hole = holes.find((h) => h.number === currentHole);
-        if (!hole) {
-          console.error("[PUTT SUBMIT DEBUG] No hole found for currentHole", {
-            currentHole,
-            holes,
-          });
-          continue;
-        }
-        // Update the putts row for this player, session, and hole_id
-        const { error } = await supabase
-          .from("putts")
-          .update({ num_putts: Number(value) })
-          .eq("session_id", session.id)
-          .eq("player_id", p.id)
-          .eq("hole_id", hole.id);
-        if (error) {
-          console.error("[PUTT SUBMIT DEBUG] Error updating putt", {
-            player: p,
-            value,
-            currentHole,
-            error,
-          });
-        }
-      }
-    }
-
-    // --- CHIP LOGIC: Assign chip to player(s) with latest 3+ putt ---
-    // Find the latest (highest hole number) 3-putt or higher for any player
-    let latestHole = 0;
-    players.forEach((p) => {
-      const playerPutts = putts[p.id] || {};
-      Object.entries(playerPutts).forEach(([holeNumStr, numPutts]) => {
-        const holeNum = Number(holeNumStr);
-        if (holeNum > latestHole && Number(numPutts) >= 3) {
-          latestHole = holeNum;
-        }
-      });
-    });
-    // Find all players with a 3+ on the latestHole
-    const chipCandidates = players.filter((p) => {
-      const playerPutts = putts[p.id] || {};
-      return Number(playerPutts[latestHole]) >= 3;
-    });
-    if (latestHole > 0 && chipCandidates.length === 1) {
-      setChipHolder(chipCandidates[0].id);
-      // Persist chip assignment to backend
-      if (session?.three_putt_chip_enabled) {
-        await supabase.from("chip_events").insert([
+      const numPutts = putts[p.id]?.[currentHole];
+      if (numPutts !== undefined && numPutts !== "") {
+        console.log(
+          `[handleSubmitPutts] Saving putts for player ${p.id}:`,
+          numPutts
+        );
+        await supabase.from("putts").upsert(
           {
             session_id: session.id,
-            player_id: chipCandidates[0].id,
+            player_id: p.id,
+            hole_id: hole.id,
+            num_putts: numPutts,
           },
-        ]);
-      }
-    } else if (latestHole > 0 && chipCandidates.length > 1) {
-      // Multiple candidates: show modal to pick
-      setShowChipModal(true);
-    } else {
-      setChipHolder(null);
-      // Persist chip removal to backend
-      if (session?.three_putt_chip_enabled) {
-        await supabase.from("chip_events").insert([
-          {
-            session_id: session.id,
-            player_id: null,
-          },
-        ]);
+          { onConflict: ["session_id", "player_id", "hole_id"] }
+        );
       }
     }
-
-    setTimeout(() => setAnimatePrev({}), 600); // clear after animation
-    setCurrentHole((h) => {
-      const next = h + 1;
-      window.localStorage.setItem(`currentHole_${id}`, next);
-      return next;
-    });
+    // Assign cards for this hole based on putts
+    await assignCardsForHole(currentHole);
+    // Fetch cards for this hole and update UI
+    await fetchCardsForHole(currentHole);
+    // (Optional) CHIP LOGIC: You can re-add chip logic here if needed
+    console.log("[handleSubmitPutts] complete for currentHole:", currentHole);
   };
 
   // Handle chip assignment if multiple 3-putters
-  const assignChip = (userId) => {
+  const assignChip = async (userId) => {
     const player = players.find((p) => p.user_id === userId);
-    if (player) {
+    if (player && chipModalHole) {
       setChipHolder(player.id);
       // Persist chip assignment to backend
-      if (session?.three_putt_chip_enabled) {
-        supabase.from("chip_events").insert([
-          {
-            session_id: session.id,
-            player_id: player.id,
-          },
-        ]);
-      }
+      await supabase.from("chip_events").insert([
+        {
+          session_id: session.id,
+          session_player_id: player.id,
+          hole_number: chipModalHole,
+        },
+      ]);
     }
     setShowChipModal(false);
   };
@@ -808,7 +1010,7 @@ export default function Game() {
                 Buy-In: ${session.buy_in_amount}
               </span>
               <span className="flex items-center gap-2 bg-green-100 rounded-full px-3 py-1 text-green-900 font-medium border border-green-200 text-sm min-w-fit">
-                <SparklesIcon className="w-4 h-4 text-green-500" />
+                <ThreePuttIcon className="w-4 h-4 text-green-500" />
                 3-Putt: ${session.three_putt_value}
               </span>
               {session.three_putt_chip_enabled && (
@@ -818,19 +1020,7 @@ export default function Game() {
                 </span>
               )}
               <span className="flex items-center gap-2 bg-blue-100 rounded-full px-3 py-1 text-blue-900 font-medium border border-blue-200 text-sm min-w-fit">
-                <svg
-                  className="w-4 h-4 text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M16 7V3m0 0L8 7m8-4v18m0 0l-8-4m8 4H8"
-                  />
-                </svg>
+                <CardsIcon className="w-4 h-4 text-blue-400" />
                 Deal: {session.deal_method?.replace(/_/g, " ")}
               </span>
             </div>
@@ -974,7 +1164,8 @@ export default function Game() {
                   onClick={() => setShowScorecard(false)}
                 >
                   <div
-                    className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl mx-4 flex flex-col gap-6 relative border-t-8 border-blue-200"
+                    className="bg-white rounded-2xl shadow-2xl px-4 sm:px-8 py-4 sm:py-6 w-full max-w-2xl mx-2 sm:mx-auto flex flex-col gap-6 relative border-t-8 border-blue-200"
+                    style={{ maxHeight: "80vh", overflowY: "auto" }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
@@ -1120,7 +1311,7 @@ export default function Game() {
                   </th>
                   {currentHole > 1 && (
                     <th className="py-3 px-2 text-neutral-400 font-medium">
-                      Hole {currentHole - 1}
+                      Hole {Math.min(currentHole - 1, 18)}
                     </th>
                   )}
                   <th className="py-3 px-2 rounded-r-xl text-neutral-800 font-semibold">
@@ -1230,20 +1421,58 @@ export default function Game() {
                   </span>
                 )}
               </span>
-              <div className="flex gap-2 mb-2">
-                <CardPlaceholder />
-                <CardPlaceholder />
-                <CardPlaceholder />
-                <CardPlaceholder />
-                <CardPlaceholder />
+              <div className="mb-2 flex flex-col gap-2">
+                {loadingCards ? (
+                  <div className="flex gap-2">
+                    {Array(5)
+                      .fill(0)
+                      .map((_, i) => (
+                        <CardPlaceholder key={i} />
+                      ))}
+                  </div>
+                ) : (
+                  (() => {
+                    const cards = playerCards[p.id] || [];
+                    const rows = [];
+                    for (let r = 0; r < Math.ceil(cards.length / 7); r++) {
+                      rows.push(
+                        <div className="flex gap-2" key={r}>
+                          {cards
+                            .slice(r * 7, r * 7 + 7)
+                            .map((card, i) =>
+                              card ? (
+                                <PokerCard
+                                  key={card.id || i + r * 7}
+                                  card={card}
+                                  faceDown={
+                                    card.is_hidden && userId !== p.user_id
+                                  }
+                                />
+                              ) : (
+                                <CardPlaceholder key={i + r * 7} />
+                              )
+                            )}
+                        </div>
+                      );
+                    }
+                    // If no cards, show a 'No cards yet' interface
+                    if (cards.length === 0) {
+                      rows.push(
+                        <div
+                          className="flex flex-col items-center justify-center text-gray-400 text-xs py-4 w-full"
+                          key="empty"
+                        >
+                          <span className="text-2xl mb-1">🃏</span>
+                          <span>No cards yet</span>
+                        </div>
+                      );
+                    }
+                    return rows;
+                  })()
+                )}
               </div>
               <span className="text-xs text-blue-500 mb-2">Poker Hand</span>
-              <button
-                className="bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-4 py-1 rounded shadow border border-blue-200 text-xs"
-                onClick={() => handleViewPutts(p)}
-              >
-                View Putts
-              </button>
+              {/* View Putts button removed since full scorecard is available */}
             </div>
           ))}
         </section>
@@ -1365,44 +1594,22 @@ export default function Game() {
               Who gets the chip?
             </h3>
             <div className="flex flex-col gap-2">
-              {players &&
-                (() => {
-                  // Find latestHole and candidates again for modal
-                  let latestHole = 0;
-                  players.forEach((p) => {
-                    const playerPutts = putts[p.id] || {};
-                    Object.entries(playerPutts).forEach(
-                      ([holeNumStr, numPutts]) => {
-                        const holeNum = Number(holeNumStr);
-                        if (holeNum > latestHole && Number(numPutts) >= 3) {
-                          latestHole = holeNum;
-                        }
-                      }
-                    );
-                  });
-                  const chipCandidates = players.filter((p) => {
-                    const playerPutts = putts[p.id] || {};
-                    return Number(playerPutts[latestHole]) >= 3;
-                  });
-                  if (chipCandidates.length > 0) {
-                    return chipCandidates.map((p) => (
-                      <button
-                        key={p.id}
-                        className="flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-900 font-semibold px-4 py-2 rounded-lg border border-yellow-300 shadow transition"
-                        onClick={() => assignChip(p.user_id)}
-                      >
-                        <CasinoChipIcon className="w-4 h-4" color="#eab308" />
-                        {p.name}
-                      </button>
-                    ));
-                  } else {
-                    return (
-                      <span className="text-yellow-700 text-sm">
-                        No chip candidates available.
-                      </span>
-                    );
-                  }
-                })()}
+              {chipModalCandidates.length > 0 ? (
+                chipModalCandidates.map((p) => (
+                  <button
+                    key={p.id}
+                    className="flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-900 font-semibold px-4 py-2 rounded-lg border border-yellow-300 shadow transition"
+                    onClick={() => assignChip(p.user_id)}
+                  >
+                    <CasinoChipIcon className="w-4 h-4" color="#eab308" />
+                    {p.name}
+                  </button>
+                ))
+              ) : (
+                <span className="text-yellow-700 text-sm">
+                  No chip candidates available.
+                </span>
+              )}
             </div>
             <button
               className="text-gray-500 hover:text-gray-700 text-sm mt-1"
