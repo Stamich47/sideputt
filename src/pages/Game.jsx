@@ -23,12 +23,13 @@ import {
 import { PokerCard } from "../components/PokerCard";
 
 export default function Game() {
-  // --- All useState hooks at the very top ---
   // Tab state for poker hand section
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const { id } = useParams();
   const [session, setSession] = useState(null);
   const [players, setPlayers] = useState([]);
+  // --- All useState hooks at the very top ---
+
   useEffect(() => {
     if (
       players.length > 0 &&
@@ -52,6 +53,48 @@ export default function Game() {
   const [chipModalHole, setChipModalHole] = useState(null);
   const [isHost, setIsHost] = useState(false);
   const [showGameDetails, setShowGameDetails] = useState(false);
+  const [editingGameDetails, setEditingGameDetails] = useState(false);
+  const [editDetails, setEditDetails] = useState({
+    buyIn: "",
+    threePutt: "",
+    chipValue: "",
+    dealMethod: "",
+    chipEnabled: false,
+  });
+  const [savingDetails, setSavingDetails] = useState(false);
+  // Handler to start editing game details
+  const handleEditGameDetails = () => {
+    setEditDetails({
+      buyIn: session?.buy_in_amount || "",
+      threePutt: session?.three_putt_value || "",
+      chipValue: session?.three_putt_chip_value || "",
+      dealMethod: session?.deal_method || "",
+      chipEnabled: !!session?.three_putt_chip_enabled,
+    });
+    setEditingGameDetails(true);
+  };
+
+  // Handler to save edited game details
+  const handleSaveGameDetails = async () => {
+    setSavingDetails(true);
+    const updates = {
+      buy_in_amount: editDetails.buyIn,
+      three_putt_value: editDetails.threePutt,
+      three_putt_chip_value: editDetails.chipValue,
+      deal_method: editDetails.dealMethod,
+      three_putt_chip_enabled: editDetails.chipEnabled,
+    };
+    const { error } = await supabase
+      .from("sessions")
+      .update(updates)
+      .eq("id", session.id);
+    if (!error) {
+      setEditingGameDetails(false);
+      setShowGameDetails(false);
+      window.location.reload();
+    }
+    setSavingDetails(false);
+  };
   const [puttsModalPlayer] = useState(null); // restored for modal usage
   const [puttsModalData] = useState([]); // restored for modal usage
   const [showPuttsModal, setShowPuttsModal] = useState(false);
@@ -106,7 +149,12 @@ export default function Game() {
     }
     setPutts(puttsMap);
 
-    // CHIP LOGIC: Use chip_events as source of truth
+    // CHIP LOGIC: Only run if chip is enabled
+    if (!session.three_putt_chip_enabled) {
+      setChipHolder(null);
+      setShowChipModal(false);
+      return;
+    }
     // 1. Find the latest hole with a 3+ putt
     let latestHole = 0;
     players.forEach((p) => {
@@ -1003,26 +1051,127 @@ export default function Game() {
             <h3 className="text-xl font-bold text-green-700 mb-2">
               Game Details
             </h3>
-            <div className="flex flex-col gap-3">
-              <span className="flex items-center gap-2 bg-green-100 rounded-full px-3 py-1 text-green-900 font-medium border border-green-200 text-sm min-w-fit">
-                <CurrencyDollarIcon className="w-4 h-4 text-green-500" />
-                Buy-In: ${session.buy_in_amount}
-              </span>
-              <span className="flex items-center gap-2 bg-green-100 rounded-full px-3 py-1 text-green-900 font-medium border border-green-200 text-sm min-w-fit">
-                <ThreePuttIcon className="w-4 h-4 text-green-500" />
-                3-Putt: ${session.three_putt_value}
-              </span>
-              {session.three_putt_chip_enabled && (
+            {editingGameDetails ? (
+              <form
+                className="flex flex-col gap-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSaveGameDetails();
+                }}
+              >
+                <label className="flex flex-col gap-1 text-sm font-medium text-green-900">
+                  Buy-In
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="rounded px-2 py-1 border border-green-200"
+                    value={editDetails.buyIn}
+                    onChange={(e) =>
+                      setEditDetails((d) => ({ ...d, buyIn: e.target.value }))
+                    }
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm font-medium text-green-900">
+                  3-Putt Value
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="rounded px-2 py-1 border border-green-200"
+                    value={editDetails.threePutt}
+                    onChange={(e) =>
+                      setEditDetails((d) => ({
+                        ...d,
+                        threePutt: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="flex flex-row items-center gap-2 text-sm font-medium text-yellow-900">
+                  <input
+                    type="checkbox"
+                    className="accent-yellow-500 w-4 h-4"
+                    checked={editDetails.chipEnabled}
+                    onChange={(e) =>
+                      setEditDetails((d) => ({
+                        ...d,
+                        chipEnabled: e.target.checked,
+                      }))
+                    }
+                  />
+                  Enable Three-Putt Chip
+                </label>
+                {editDetails.chipEnabled && (
+                  <label className="flex flex-col gap-1 text-sm font-medium text-yellow-900">
+                    Chip Value
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="rounded px-2 py-1 border border-yellow-200"
+                      value={editDetails.chipValue}
+                      onChange={(e) =>
+                        setEditDetails((d) => ({
+                          ...d,
+                          chipValue: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                )}
+                <span className="flex items-center gap-2 bg-blue-100 rounded-full px-3 py-1 text-blue-900 font-medium border border-blue-200 text-sm min-w-fit">
+                  <CardsIcon className="w-4 h-4 text-blue-400" />
+                  Deal: {session.deal_method?.replace(/_/g, " ")}
+                </span>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="submit"
+                    className="bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2 rounded shadow"
+                    disabled={savingDetails}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    className="bg-neutral-200 hover:bg-neutral-300 text-green-900 font-semibold px-4 py-2 rounded shadow"
+                    onClick={() => setEditingGameDetails(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <span className="flex items-center gap-2 bg-green-100 rounded-full px-3 py-1 text-green-900 font-medium border border-green-200 text-sm min-w-fit">
+                  <CurrencyDollarIcon className="w-4 h-4 text-green-500" />
+                  Buy-In: ${session.buy_in_amount}
+                </span>
+                <span className="flex items-center gap-2 bg-green-100 rounded-full px-3 py-1 text-green-900 font-medium border border-green-200 text-sm min-w-fit">
+                  <ThreePuttIcon className="w-4 h-4 text-green-500" />
+                  3-Putt: ${session.three_putt_value}
+                </span>
                 <span className="flex items-center gap-2 bg-yellow-100 rounded-full px-3 py-1 text-yellow-900 font-medium border border-yellow-200 text-sm min-w-fit">
                   <CasinoChipIcon className="w-4 h-4" color="#eab308" />
-                  Chip: ${session.three_putt_chip_value}
+                  Chip:{" "}
+                  {session.three_putt_chip_enabled
+                    ? `$${session.three_putt_chip_value}`
+                    : "not used"}
                 </span>
-              )}
-              <span className="flex items-center gap-2 bg-blue-100 rounded-full px-3 py-1 text-blue-900 font-medium border border-blue-200 text-sm min-w-fit">
-                <CardsIcon className="w-4 h-4 text-blue-400" />
-                Deal: {session.deal_method?.replace(/_/g, " ")}
-              </span>
-            </div>
+                <span className="flex items-center gap-2 bg-blue-100 rounded-full px-3 py-1 text-blue-900 font-medium border border-blue-200 text-sm min-w-fit">
+                  <CardsIcon className="w-4 h-4 text-blue-400" />
+                  Deal: {session.deal_method?.replace(/_/g, " ")}
+                </span>
+                {isHost && (
+                  <button
+                    className="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-2 rounded shadow"
+                    onClick={handleEditGameDetails}
+                  >
+                    Edit Game Details
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1402,9 +1551,15 @@ export default function Game() {
 
         {/* Poker Hands Section */}
         {/* Tabbed Poker Hand Section - File Tab Style */}
-        <section className="w-full max-w-xl mx-auto flex flex-col gap-6">
+        <section className="w-full max-w-xl mx-auto flex flex-col gap-0">
+          <h2 className="text-lg sm:text-xl font-bold text-blue-700 mb-2 tracking-wide uppercase text-center">
+            Poker Hands
+          </h2>
           {/* File-style tabs for each player */}
-          <div className="flex items-end gap-0 mb-0 border-b border-blue-200 relative z-10">
+          <div
+            className="flex items-end gap-0 mb-0 border-b-0 relative z-10"
+            style={{ marginBottom: "-1px", marginTop: "0.5rem" }}
+          >
             {players.map((p, idx) => {
               const isActive =
                 selectedPlayerId === p.id || (!selectedPlayerId && idx === 0);
@@ -1432,7 +1587,10 @@ export default function Game() {
             })}
           </div>
           {/* Show only selected player's hand */}
-          <div className="w-full bg-white border border-blue-200 rounded-b-2xl shadow-xl p-8 flex flex-col items-center min-h-[180px] -mt-2 z-0">
+          <div
+            className="w-full bg-white border border-blue-200 rounded-b-2xl shadow-xl p-8 flex flex-col items-center min-h-[180px] z-0"
+            style={{ marginTop: "0px" }}
+          >
             {(() => {
               const p =
                 players.find((pl) => pl.id === selectedPlayerId) || players[0];
@@ -1440,11 +1598,12 @@ export default function Game() {
               return (
                 <>
                   <span className="font-bold text-blue-900 mb-4 text-xl flex items-center gap-2 tracking-wide">
-                    {chipHolder === p.id && (
-                      <span className="flex items-center gap-1 text-yellow-700 font-bold animate-bounce">
-                        <CasinoChipIcon className="w-5 h-5" color="#eab308" />
-                      </span>
-                    )}
+                    {session?.three_putt_chip_enabled &&
+                      chipHolder === p.id && (
+                        <span className="flex items-center gap-1 text-yellow-700 font-bold animate-bounce">
+                          <CasinoChipIcon className="w-5 h-5" color="#eab308" />
+                        </span>
+                      )}
                     {p.name}
                     {userId === p.user_id && (
                       <span className="ml-1 text-xs text-neutral-500 font-bold">
@@ -1454,12 +1613,8 @@ export default function Game() {
                   </span>
                   <div className="mb-4 flex flex-col gap-3 w-full items-center">
                     {loadingCards ? (
-                      <div className="flex gap-3 justify-center">
-                        {Array(5)
-                          .fill(0)
-                          .map((_, i) => (
-                            <CardPlaceholder key={i} />
-                          ))}
+                      <div className="flex justify-center items-center w-full py-8">
+                        <span className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-400 border-solid border-r-4 border-b-4 border-l-0"></span>
                       </div>
                     ) : (
                       (() => {
@@ -1501,9 +1656,6 @@ export default function Game() {
                       })()
                     )}
                   </div>
-                  <span className="text-xs text-blue-400 mb-2 tracking-wide uppercase font-semibold">
-                    Poker Hand
-                  </span>
                   {/* ...other player info/actions if needed... */}
                 </>
               );
