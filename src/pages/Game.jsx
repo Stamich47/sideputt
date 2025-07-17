@@ -24,9 +24,19 @@ import { PokerCard } from "../components/PokerCard";
 
 export default function Game() {
   // --- All useState hooks at the very top ---
+  // Tab state for poker hand section
+  const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const { id } = useParams();
   const [session, setSession] = useState(null);
   const [players, setPlayers] = useState([]);
+  useEffect(() => {
+    if (
+      players.length > 0 &&
+      (!selectedPlayerId || !players.find((p) => p.id === selectedPlayerId))
+    ) {
+      setSelectedPlayerId(players[0].id);
+    }
+  }, [players]);
   const [playerCards, setPlayerCards] = useState({});
   const [loadingCards, setLoadingCards] = useState(false);
   const [putts, setPutts] = useState({}); // { playerId: [puttsPerHole] }
@@ -1391,80 +1401,114 @@ export default function Game() {
         </section>
 
         {/* Poker Hands Section */}
-        <section className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {players.map((p) => (
-            <div
-              key={p.user_id}
-              className="bg-white rounded-2xl border border-blue-100 shadow p-6 flex flex-col items-center hover:shadow-lg transition-shadow"
-            >
-              <span className="font-semibold text-blue-900 mb-2 text-lg flex items-center gap-2">
-                {chipHolder === p.id && (
-                  <span className="flex items-center gap-1 text-yellow-700 font-bold animate-bounce">
-                    <CasinoChipIcon className="w-4 h-4" color="#eab308" />
+        {/* Tabbed Poker Hand Section - File Tab Style */}
+        <section className="w-full max-w-xl mx-auto flex flex-col gap-6">
+          {/* File-style tabs for each player */}
+          <div className="flex items-end gap-0 mb-0 border-b border-blue-200 relative z-10">
+            {players.map((p, idx) => {
+              const isActive =
+                selectedPlayerId === p.id || (!selectedPlayerId && idx === 0);
+              return (
+                <button
+                  key={p.user_id}
+                  className={`relative px-6 py-2 font-semibold text-base focus:outline-none transition-all duration-150
+                    ${
+                      isActive
+                        ? "bg-white border-x border-t border-blue-400 text-blue-900 rounded-t-lg shadow z-20 -mb-px"
+                        : "bg-blue-50 border-x border-t border-blue-200 text-blue-600 rounded-t-lg hover:bg-blue-100 z-10 mb-0"
+                    }
+                  `}
+                  style={{ minWidth: 110 }}
+                  onClick={() => setSelectedPlayerId(p.id)}
+                >
+                  {p.name}
+                  {userId === p.user_id && (
+                    <span className="ml-1 text-xs text-neutral-400 font-bold">
+                      (You)
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {/* Show only selected player's hand */}
+          <div className="w-full bg-white border border-blue-200 rounded-b-2xl shadow-xl p-8 flex flex-col items-center min-h-[180px] -mt-2 z-0">
+            {(() => {
+              const p =
+                players.find((pl) => pl.id === selectedPlayerId) || players[0];
+              if (!p) return null;
+              return (
+                <>
+                  <span className="font-bold text-blue-900 mb-4 text-xl flex items-center gap-2 tracking-wide">
+                    {chipHolder === p.id && (
+                      <span className="flex items-center gap-1 text-yellow-700 font-bold animate-bounce">
+                        <CasinoChipIcon className="w-5 h-5" color="#eab308" />
+                      </span>
+                    )}
+                    {p.name}
+                    {userId === p.user_id && (
+                      <span className="ml-1 text-xs text-neutral-500 font-bold">
+                        (You)
+                      </span>
+                    )}
                   </span>
-                )}
-                {p.name}
-                {userId === p.user_id && (
-                  <span className="ml-1 text-xs text-neutral-500 font-bold">
-                    (You)
-                  </span>
-                )}
-              </span>
-              <div className="mb-2 flex flex-col gap-2">
-                {loadingCards ? (
-                  <div className="flex gap-2">
-                    {Array(5)
-                      .fill(0)
-                      .map((_, i) => (
-                        <CardPlaceholder key={i} />
-                      ))}
+                  <div className="mb-4 flex flex-col gap-3 w-full items-center">
+                    {loadingCards ? (
+                      <div className="flex gap-3 justify-center">
+                        {Array(5)
+                          .fill(0)
+                          .map((_, i) => (
+                            <CardPlaceholder key={i} />
+                          ))}
+                      </div>
+                    ) : (
+                      (() => {
+                        const cards = playerCards[p.id] || [];
+                        const rows = [];
+                        for (let r = 0; r < Math.ceil(cards.length / 7); r++) {
+                          rows.push(
+                            <div className="flex gap-3 justify-center" key={r}>
+                              {cards
+                                .slice(r * 7, r * 7 + 7)
+                                .map((card, i) =>
+                                  card ? (
+                                    <PokerCard
+                                      key={card.id || i + r * 7}
+                                      card={card}
+                                      faceDown={
+                                        card.is_hidden && userId !== p.user_id
+                                      }
+                                    />
+                                  ) : (
+                                    <CardPlaceholder key={i + r * 7} />
+                                  )
+                                )}
+                            </div>
+                          );
+                        }
+                        if (cards.length === 0) {
+                          rows.push(
+                            <div
+                              className="flex flex-col items-center justify-center text-gray-400 text-xs py-6 w-full"
+                              key="empty"
+                            >
+                              <span className="text-3xl mb-2">🃏</span>
+                              <span>No cards yet</span>
+                            </div>
+                          );
+                        }
+                        return rows;
+                      })()
+                    )}
                   </div>
-                ) : (
-                  (() => {
-                    // Always use playerCards[p.id] for this player
-                    const cards = playerCards[p.id] || [];
-                    const rows = [];
-                    for (let r = 0; r < Math.ceil(cards.length / 7); r++) {
-                      rows.push(
-                        <div className="flex gap-2" key={r}>
-                          {cards
-                            .slice(r * 7, r * 7 + 7)
-                            .map((card, i) =>
-                              card ? (
-                                <PokerCard
-                                  key={card.id || i + r * 7}
-                                  card={card}
-                                  faceDown={
-                                    card.is_hidden && userId !== p.user_id
-                                  }
-                                />
-                              ) : (
-                                <CardPlaceholder key={i + r * 7} />
-                              )
-                            )}
-                        </div>
-                      );
-                    }
-                    // If no cards, show a 'No cards yet' interface
-                    if (cards.length === 0) {
-                      rows.push(
-                        <div
-                          className="flex flex-col items-center justify-center text-gray-400 text-xs py-4 w-full"
-                          key="empty"
-                        >
-                          <span className="text-2xl mb-1">🃏</span>
-                          <span>No cards yet</span>
-                        </div>
-                      );
-                    }
-                    return rows;
-                  })()
-                )}
-              </div>
-              <span className="text-xs text-blue-500 mb-2">Poker Hand</span>
-              {/* View Putts button removed since full scorecard is available */}
-            </div>
-          ))}
+                  <span className="text-xs text-blue-400 mb-2 tracking-wide uppercase font-semibold">
+                    Poker Hand
+                  </span>
+                  {/* ...other player info/actions if needed... */}
+                </>
+              );
+            })()}
+          </div>
         </section>
       </main>
 
