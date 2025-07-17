@@ -37,7 +37,7 @@ export default function Game() {
     ) {
       setSelectedPlayerId(players[0].id);
     }
-  }, [players]);
+  }, [players, selectedPlayerId]);
   const [playerCards, setPlayerCards] = useState({});
   const [loadingCards, setLoadingCards] = useState(false);
   const [putts, setPutts] = useState({}); // { playerId: [puttsPerHole] }
@@ -214,7 +214,7 @@ export default function Game() {
       setChipHolder(null);
       setShowChipModal(false);
     }
-  }, [session?.id, players]);
+  }, [session?.id, players, session?.three_putt_chip_enabled]);
 
   // --- Supabase Realtime subscriptions ---
   React.useEffect(() => {
