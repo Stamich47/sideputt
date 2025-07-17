@@ -115,8 +115,19 @@ export default function Navbar({ user }) {
                     {displayNameFromUser}
                   </span>
                 </div>
+                {/* Home button, only show if not already on home screen */}
+                {window.location.pathname !== "/" && (
+                  <Link
+                    to="/"
+                    className="w-full bg-blue-100 hover:bg-blue-200 text-blue-800 rounded py-2 font-bold border border-blue-200 text-center "
+                    style={{ textDecoration: "none" }}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Home
+                  </Link>
+                )}
                 <button
-                  className="w-full bg-green-100 hover:bg-green-200 text-green-800 rounded py-2 font-bold mt-2 border border-green-200"
+                  className="w-full bg-green-100 hover:bg-green-200 text-green-800 rounded py-2 font-bold border border-green-200"
                   onClick={() => {
                     setShowProfileModal(true);
                     setMenuOpen(false);
@@ -125,7 +136,7 @@ export default function Navbar({ user }) {
                   Edit profile
                 </button>
                 <button
-                  className="w-full bg-green-500 hover:bg-green-600 text-white rounded py-2 font-bold"
+                  className="w-full bg-red-500 hover:bg-red-600 text-white rounded py-2 font-bold"
                   onClick={handleLogout}
                 >
                   Log Out
