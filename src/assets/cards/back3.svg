@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
+  <rect width="200" height="300" rx="16" fill="#f59e42" stroke="#fff" stroke-width="4"/>
+  <ellipse cx="100" cy="150" rx="70" ry="100" fill="#fff" stroke="#f59e42" stroke-width="6"/>
+  <text x="100" y="160" font-size="40" font-family="serif" fill="#f59e42" text-anchor="middle" alignment-baseline="middle">♣</text>
+</svg>
