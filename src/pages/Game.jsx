@@ -103,6 +103,8 @@ export default function Game() {
   const [animatePrev, setAnimatePrev] = useState({});
   const [showScorecard, setShowScorecard] = useState(false);
   const [showPotModal, setShowPotModal] = useState(false);
+  // Modal for game deletion
+  const [showGameDeletedModal, setShowGameDeletedModal] = useState(false);
 
   const fetchCardsForHole = React.useCallback(async () => {
     if (!session?.id || players.length === 0) return;
@@ -255,10 +257,59 @@ export default function Game() {
       )
       .subscribe();
 
+    // Listen for new players joining (INSERT on session_players)
+    const playersChannel = supabase
+      .channel("session_players-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "session_players",
+          filter: `session_id=eq.${session.id}`,
+        },
+        () => {
+          // Re-fetch players list
+          supabase
+            .from("session_players")
+            .select("*")
+            .eq("session_id", session.id)
+            .then(({ data }) => {
+              if (data) {
+                const normalizedPlayers = (data || []).map((p) => ({
+                  ...p,
+                  id: p.id || p.session_player_id || p.player_id,
+                }));
+                setPlayers(normalizedPlayers);
+              }
+            });
+        }
+      )
+      .subscribe();
+
+    // Listen for game deletion (DELETE on sessions)
+    const sessionDeleteChannel = supabase
+      .channel("session-delete-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "sessions",
+          filter: `id=eq.${session.id}`,
+        },
+        () => {
+          setShowGameDeletedModal(true);
+        }
+      )
+      .subscribe();
+
     // Cleanup on unmount
     return () => {
       supabase.removeChannel(puttsChannel);
       supabase.removeChannel(cardsChannel);
+      supabase.removeChannel(playersChannel);
+      supabase.removeChannel(sessionDeleteChannel);
     };
   }, [session?.id, fetchAllPuttsAndChip, fetchCardsForHole]);
 
@@ -499,7 +550,7 @@ export default function Game() {
       await supabase.from(table).delete().eq("session_id", session.id);
     }
     await supabase.from("sessions").delete().eq("id", session.id);
-    alert("Game deleted.");
+
     window.location.href = "/";
   };
 
@@ -982,6 +1033,31 @@ export default function Game() {
     }
     setShowChipModal(false);
   };
+
+  if (showGameDeletedModal) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/20 backdrop-blur-sm"
+        onClick={() => (window.location.href = "/")}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4 flex flex-col gap-6 relative border-t-8 border-red-200"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <button
+            className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold"
+            onClick={() => (window.location.href = "/")}
+          >
+            &times;
+          </button>
+          <h3 className="text-xl font-bold text-red-700 mb-2">Game Deleted</h3>
+          <p className="text-gray-700">This game has been deleted.</p>
+        </div>
+      </div>
+    );
+  }
 
   // --- Clean, neutral UI ---
   return (

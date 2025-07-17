@@ -6,7 +6,7 @@ export function PokerCard({ card, faceDown = false, onClick, className = "" }) {
   // - Use the 'className' prop to override or extend styles (e.g., add shadow, change border, etc.)
   // - Use the 'onClick' prop for interactive cards
   // - Use the 'faceDown' prop to show the card back
-  // - You can further style with Tailwind or custom CSS
+  // - You can further style with Tailwind or custom CSSg
   // Map rank and suit to asset filename
   if (faceDown) {
     return (
